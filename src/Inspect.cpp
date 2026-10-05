@@ -960,7 +960,9 @@ namespace Inspect
 						PickUpNow(state.ref, state.count, state.arg3, state.playSound, hidden);
 						Seen::Add(state.baseID);
 					}
-					PlayTelekinesisSound(HandMagicNode());
+					// from the player's body, not the 1st person hand: the hand is on its way behind the back and the camera
+					// goes back to 3rd person right after, and a sound following the hand jumped with it (broken sound)
+					PlayTelekinesisSound(player->Get3D(false));
 					logs::info("Put in the backpack");
 				}
 				if (state.time >= settings.stowTime) {
@@ -975,7 +977,7 @@ namespace Inspect
 			case Phase::kPutBack:
 				if (state.time >= settings.returnTime) {
 					const auto landed = state.ref.get();
-					PlayTelekinesisSound(landed && landed->Get3D() ? landed->Get3D() : HandMagicNode());  // where it lands
+					PlayTelekinesisSound(landed && landed->Get3D() ? landed->Get3D() : player->Get3D(false));  // where it lands
 					logs::info("Put back");
 					End();
 				}
