@@ -1,0 +1,13 @@
+Item Inspection
+
+The idea of looking at an item in your hand before it goes into the backpack comes from the item pickups of
+Crimson Desert by Pearl Abyss.
+
+Built with CommonLibSSE-NG (https://github.com/alandtse/CommonLibVR/tree/ng, MIT) and the SKSE Menu Framework 3 API
+(QTR-Modding, https://github.com/QTR-Modding/SKSE-Menu-Framework-3-API, LGPL-2.1).
+
+Needs SKSE by the SKSE team and Address Library for SKSE Plugins by meh321.
+
+The telekinesis hand effect, its light and its grab sound are the vanilla Telekinesis spell's from Skyrim.esm, and
+the fist that holds weapons starts from the game's 1st person one-handed idle animation. They are used from the game
+while it runs; nothing of the game is included.

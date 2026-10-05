@@ -1,0 +1,20 @@
+# editor / build tool folders
+.cache/
+.idea/
+.vs/
+.vscode/
+.xmake/
+vs*/
+
+# build output
+build/
+dist/
+compile_commands.json
+*.zip
+
+# local machine settings (see build.bat)
+build.local.bat
+
+# python
+__pycache__/
+*.pyc
