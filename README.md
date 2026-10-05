@@ -32,39 +32,6 @@ Works with skeleton replacers such as XPMSSE.
 - Optional: [SKSE Menu Framework](https://www.nexusmods.com/skyrimspecialedition/mods/120352) for the in-game settings
   page (Item Inspection > Settings); without it the settings are in the INI
 
-## Settings
-
-In game through SKSE Menu Framework, or in `Data\SKSE\Plugins\ItemInspection.ini`: keys, mouse sensitivity, where the
-hand holds items, weapons and bows, the largest size an item is shown at, telekinesis effect / light / sound, animation
-speed, and which items use the normal pickup (in combat, gold, arrows, weapons, armor, stolen items).
-
-Weapons, armor, misc items, ingredients, potions and food, soul gems, keys, scrolls and torches are inspected. Books
-open the book menu as usual.
-
-The log is `Documents\My Games\Skyrim Special Edition\SKSE\ItemInspection.log`.
-
-## Languages
-
-The settings page and the key hint are in English, French, German, Italian, Spanish, Polish, Russian, Japanese and
-Chinese (traditional): by default in the game's language, or chosen on the "Languages" page of the settings.
-Polish, Russian, Japanese and Chinese need their characters turned on in SKSE Menu Framework
-(Options > Open Settings > Character Glyphs).
-
-## Building
-
-Needs [xmake](https://xmake.io) and MSVC (Visual Studio 2022 or newer build tools).
-
-```
-git clone --recursive https://github.com/W1terr/Item-Inspection.git
-cd Item-Inspection
-build.bat
-python tools/package.py build "<output folder>"
-```
-
-`build.bat` builds `ItemInspection.dll` (the output folder can be changed in a `build.local.bat`, see the script);
-`tools/package.py` makes the archive with the DLL, the INI, the license and the credits.
-`tools/check_lang.py` checks the translations in `src/Lang.cpp` against the texts the code uses.
-
 ## Credits
 
 - Inspired by the item pickups of Crimson Desert by Pearl Abyss.
