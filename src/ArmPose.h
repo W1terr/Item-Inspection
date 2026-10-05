@@ -46,4 +46,8 @@ namespace ArmPose
 
 	// The skeleton was unloaded (game load): drop the cached bones without touching them
 	void Forget();
+
+	// True while another mod hides the 1st person arm by shrinking the upper arm (Improved Camera SE does that when it
+	// shows the 3rd person body in 1st person) and we show it again for the pose
+	bool ShownAgain();
 }

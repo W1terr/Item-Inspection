@@ -42,6 +42,7 @@ namespace ArmPose
 		}
 
 		constexpr float kThumbCurl = 0.3f;     // the thumb bends around the fingers' axis, so only a part of the curl
+		constexpr float kHiddenScale = 0.01f;  // an upper arm scaled below this was hidden by another mod
 
 		// The fingers of a hand holding a one-handed weapon: their local rotations (w, x, y, z), taken from the first frame
 		// of the 1st person one-handed idle (meshes\actors\character\_1stperson\animations\1hm_idle.hkx), thumb first,
@@ -64,6 +65,7 @@ namespace ArmPose
 			NiPoint3                                  fingerAxis;  // hand local: towards the middle finger
 			NiPoint3                                  palmAxis;    // hand local: out of the palm
 			float                                     palmLength{ 0.0f };
+			float                                     hiddenScale{ 0.0f };  // the upper arm's scale before we showed it again, 0 = never hidden
 		};
 		Skeleton skeleton;
 
@@ -163,14 +165,34 @@ namespace ArmPose
 
 		RE::NiAVObject* warnedRoot{ nullptr };  // the skeleton we already complained about
 
+		// Improved Camera SE shows the 3rd person body in 1st person and hides the 1st person arms by scaling the upper
+		// arms to 0.001 every frame (unless a weapon is drawn): the arm and the item placed from the hand would vanish.
+		// Shows the right arm again; the hider writes its scale again next frame, so this runs every time.
+		void ShowArm()
+		{
+			const auto upper = skeleton.bones[kUpper];
+			if (upper->local.scale >= kHiddenScale) {
+				return;
+			}
+			if (skeleton.hiddenScale == 0.0f) {
+				logs::info("The 1st person arm was hidden by another mod (scale {:.3f}), showing it while inspecting", upper->local.scale);
+			}
+			skeleton.hiddenScale = std::max(upper->local.scale, 1e-4f);
+			upper->local.scale = 1.0f;
+			RE::NiUpdateData update{};
+			upper->Update(update);
+		}
+
 		bool Find(RE::NiAVObject* a_root)
 		{
 			if (skeleton.root == a_root && skeleton.bones[kUpper] && UpdateLinks()) {
+				ShowArm();
 				return true;
 			}
 			const auto error = Search(a_root);
 			if (error.empty()) {
 				warnedRoot = nullptr;
+				ShowArm();
 				return true;
 			}
 			if (warnedRoot != a_root) {
@@ -331,6 +353,10 @@ namespace ArmPose
 					rotation = skeleton.animated[i];
 				}
 			}
+			// hidden again like we found it (the other mod keeps doing that anyway)
+			if (skeleton.hiddenScale > 0.0f && skeleton.bones[kUpper]->local.scale == 1.0f) {
+				skeleton.bones[kUpper]->local.scale = skeleton.hiddenScale;
+			}
 			RE::NiUpdateData update{};
 			skeleton.bones[kUpper]->Update(update);
 		}
@@ -342,5 +368,10 @@ namespace ArmPose
 	void Forget()
 	{
 		skeleton = {};
+	}
+
+	bool ShownAgain()
+	{
+		return skeleton.hiddenScale > 0.0f;
 	}
 }

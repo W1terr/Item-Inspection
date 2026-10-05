@@ -1,6 +1,7 @@
 #include "Inspect.h"
 
 #include "ArmPose.h"
+#include "BodyArm.h"
 #include "Fade.h"
 #include "HUD.h"
 #include "Keys.h"
@@ -384,6 +385,7 @@ namespace Inspect
 			WorldPause::End();
 			Telekinesis::Stop();
 			ArmPose::Release();
+			BodyArm::Restore();
 			DetachItem();
 			ShowWorldModel();
 			RestoreControls();
@@ -1189,6 +1191,7 @@ namespace Inspect
 		{
 			if (state.phase == Phase::kIdle || state.phase == Phase::kWaitMenu || state.phase == Phase::kFadeOut || state.phase == Phase::kWaitCamera ||
 				state.phase == Phase::kFadeBack) {
+				BodyArm::Restore();  // our arm isn't shown now
 				return;
 			}
 			const auto player = Player();
@@ -1289,6 +1292,10 @@ namespace Inspect
 			const auto hand = ArmPose::Apply(root, goal);
 			if (!hand) {
 				return;
+			}
+			// Improved Camera's 3rd person body: our 1st person arm replaces its right arm
+			if (ArmPose::ShownAgain()) {
+				BodyArm::Hide(player->Get3D(false));
 			}
 			if (state.telekinesis) {
 				// the hand effect glows just over the palm, turned like the magic node it was made for
@@ -1488,6 +1495,7 @@ namespace Inspect
 	{
 		// the 3D is reloaded with the game: never touch the old nodes, just let go of them
 		ArmPose::Forget();
+		BodyArm::Forget();
 		Telekinesis::Forget();
 		if (!Active()) {
 			return;
