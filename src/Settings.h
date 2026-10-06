@@ -77,11 +77,11 @@ namespace Settings
 		float animationWait{ 0.8f };
 		bool  standStill{ true };  // the body's animation (idles too) settles and stops while the item is held
 		float bodyItemScale{ 0.7f };  // items (not weapons) are shown this much smaller in 3rd person
-		float bodyItemRight{ 0.0f };  // item offset from its place over the palm, as the camera sees it
-		float bodyItemForward{ 0.0f };
-		float bodyItemUp{ 0.0f };
+		float bodyItemRight{ 7.2f };  // item offset from its place over the palm, as the camera sees it
+		float bodyItemForward{ -0.3f };
+		float bodyItemUp{ 9.1f };
 		float bodyHoldRight{ 17.5f };  // where the hand holds the item, seen from the eyes
-		float bodyHoldForward{ 24.7f };
+		float bodyHoldForward{ 22.2f };
 		float bodyHoldUp{ -35.0f };
 		float raiseTime{ 0.45f };
 		float stowTime{ 0.6f };

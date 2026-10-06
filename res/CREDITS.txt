@@ -12,4 +12,5 @@ Needs SKSE by the SKSE team and Address Library for SKSE Plugins by meh321.
 
 The telekinesis hand effect, its light and its grab sound are the vanilla Telekinesis spell's from Skyrim.esm, and
 the fist that holds weapons starts from the game's 1st person one-handed idle animation. They are used from the game
-while it runs; nothing of the game is included.
+while it runs. The 3rd person motion of putting an item in the backpack follows the vanilla bow sheath animation
+(bow_unequip), mirrored to the right hand: a few positions sampled from it are built into the plugin.

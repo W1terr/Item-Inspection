@@ -47,9 +47,69 @@ namespace Inspect
 		// wrist positions while putting the item away, eye space (right, forward, up): out of view, low and behind
 		const NiPoint3 kStowVia{ 16.0f, 12.0f, -28.0f };
 		const NiPoint3 kStowEnd{ 20.0f, -6.0f, -38.0f };
-		// staying in 3rd person, where the hand can be seen: out to the side, then behind the back at the waist
-		const NiPoint3 kBodyStowVia{ 24.0f, 2.0f, -30.0f };
-		const NiPoint3 kBodyStowEnd{ 10.0f, -16.0f, -38.0f };
+		// Staying in 3rd person, where the hand can be seen: the hand puts the item over the right shoulder into the
+		// backpack and comes back down, like the vanilla bow sheath (bow_unequip.hkx: its left hand lays the bow on the
+		// back), mirrored to the right hand. Sampled every 0.05 s from 0.30 s (hand up in front) to the end, eye space
+		// (right, forward, up), with the elbow's direction (from the middle of shoulder and wrist), the fingers and the
+		// palm (scratch/stow_path.py).
+		struct StowKey
+		{
+			NiPoint3 wrist;
+			NiPoint3 pole;
+			NiPoint3 fingers;
+			NiPoint3 palm;
+		};
+		const std::array<StowKey, 21> kBodyStow{ {
+			{ { 33.4f, 33.0f, -21.6f }, { 0.97f, -0.17f, 0.17f }, { -0.06f, 0.78f, -0.63f }, { 0.86f, 0.36f, 0.37f } },  // 0.30 s
+			{ { 33.3f, 28.6f, -23.6f }, { 0.91f, -0.23f, 0.33f }, { -0.02f, 0.59f, -0.81f }, { 0.83f, 0.46f, 0.31f } },  // 0.35 s
+			{ { 30.5f, 21.8f, -31.5f }, { 0.88f, -0.15f, 0.45f }, { -0.23f, 0.18f, -0.96f }, { 0.87f, 0.47f, -0.12f } },  // 0.40 s
+			{ { 24.6f, 9.3f, -37.7f }, { 0.93f, 0.04f, 0.36f }, { -0.57f, -0.25f, -0.78f }, { 0.79f, 0.11f, -0.61f } },  // 0.45 s
+			{ { 19.7f, -2.0f, -36.8f }, { 0.98f, 0.08f, 0.17f }, { -0.75f, -0.33f, -0.58f }, { 0.66f, -0.35f, -0.66f } },  // 0.50 s
+			{ { 15.0f, -7.5f, -34.3f }, { 1.00f, 0.01f, -0.02f }, { -0.83f, -0.32f, -0.46f }, { 0.55f, -0.62f, -0.56f } },  // 0.55 s
+			{ { 13.2f, -9.6f, -31.5f }, { 0.99f, -0.07f, -0.13f }, { -0.84f, -0.35f, -0.40f }, { 0.51f, -0.78f, -0.37f } },  // 0.60 s
+			{ { 13.1f, -10.3f, -29.8f }, { 0.98f, -0.14f, -0.18f }, { -0.84f, -0.43f, -0.33f }, { 0.50f, -0.85f, -0.17f } },  // 0.65 s
+			{ { 13.2f, -11.4f, -29.3f }, { 0.96f, -0.19f, -0.22f }, { -0.81f, -0.52f, -0.28f }, { 0.55f, -0.83f, -0.05f } },  // 0.70 s
+			{ { 13.4f, -12.7f, -29.3f }, { 0.95f, -0.22f, -0.23f }, { -0.77f, -0.56f, -0.30f }, { 0.61f, -0.79f, -0.08f } },  // 0.75 s
+			{ { 14.0f, -13.8f, -29.1f }, { 0.96f, -0.21f, -0.21f }, { -0.72f, -0.55f, -0.42f }, { 0.65f, -0.74f, -0.15f } },  // 0.80 s
+			{ { 15.9f, -14.7f, -29.3f }, { 0.98f, -0.11f, -0.14f }, { -0.57f, -0.54f, -0.61f }, { 0.76f, -0.62f, -0.16f } },  // 0.85 s
+			{ { 19.1f, -15.5f, -29.8f }, { 1.00f, 0.03f, -0.03f }, { -0.33f, -0.51f, -0.79f }, { 0.89f, -0.45f, -0.08f } },  // 0.90 s
+			{ { 21.6f, -13.8f, -32.3f }, { 0.99f, 0.08f, 0.08f }, { -0.20f, -0.40f, -0.89f }, { 0.91f, -0.40f, -0.02f } },  // 0.95 s
+			{ { 25.1f, -7.0f, -36.7f }, { 0.96f, -0.15f, 0.23f }, { -0.25f, -0.16f, -0.95f }, { 0.81f, -0.57f, -0.12f } },  // 1.00 s
+			{ { 27.6f, 2.1f, -40.0f }, { 0.85f, -0.52f, 0.02f }, { -0.32f, 0.41f, -0.85f }, { 0.66f, -0.55f, -0.51f } },  // 1.05 s
+			{ { 29.2f, 3.5f, -44.0f }, { 0.68f, -0.69f, -0.23f }, { -0.11f, 0.67f, -0.73f }, { 0.60f, -0.54f, -0.59f } },  // 1.10 s
+			{ { 27.9f, 0.5f, -49.6f }, { 0.53f, -0.76f, -0.38f }, { 0.08f, 0.65f, -0.76f }, { 0.52f, -0.67f, -0.53f } },  // 1.15 s
+			{ { 24.9f, -2.9f, -53.9f }, { 0.48f, -0.73f, -0.48f }, { 0.14f, 0.46f, -0.88f }, { 0.20f, -0.88f, -0.43f } },  // 1.20 s
+			{ { 23.3f, -3.5f, -55.3f }, { 0.52f, -0.65f, -0.55f }, { 0.11f, 0.36f, -0.93f }, { -0.40f, -0.84f, -0.37f } },  // 1.25 s
+			{ { 21.4f, -2.8f, -56.1f }, { 0.51f, -0.63f, -0.58f }, { 0.05f, 0.37f, -0.93f }, { -0.53f, -0.78f, -0.33f } },  // 1.30 s
+		} };
+		constexpr float kBodyStowStep = 0.05f;
+		constexpr float kBodyStowBack = 0.45f;  // seconds into kBodyStow: behind the shoulder, where the stow ends
+		constexpr float kBodyStowBlend = 0.5f;  // part of the stow in which the hand goes over from its hold to the path
+		constexpr float kBodyStowWristBend = 1.2f;  // radians: the sheath bends the wrist further than holding does
+		constexpr float kBodyReturnFade = 0.4f;  // part of the return after which the arm goes back to its own animation
+		constexpr float kBodyStowLength = (kBodyStow.size() - 1) * kBodyStowStep;
+
+		// the sheath path at a time (seconds into kBodyStow): the wrist on a Catmull-Rom curve through the samples,
+		// the directions in between
+		StowKey BodyStowAt(float a_time)
+		{
+			const float       frame = std::clamp(a_time / kBodyStowStep, 0.0f, static_cast<float>(kBodyStow.size() - 1));
+			const std::size_t i = std::min(static_cast<std::size_t>(frame), kBodyStow.size() - 2);
+			const float       t = frame - static_cast<float>(i);
+			const auto&       p0 = kBodyStow[i > 0 ? i - 1 : 0];
+			const auto&       p1 = kBodyStow[i];
+			const auto&       p2 = kBodyStow[i + 1];
+			const auto&       p3 = kBodyStow[std::min(i + 2, kBodyStow.size() - 1)];
+			const float       t2 = t * t;
+			const float       t3 = t2 * t;
+			StowKey           key;
+			key.wrist = (p1.wrist * 2.0f + (p2.wrist - p0.wrist) * t + (p0.wrist * 2.0f - p1.wrist * 5.0f + p2.wrist * 4.0f - p3.wrist) * t2 +
+							(p1.wrist * 3.0f - p0.wrist - p2.wrist * 3.0f + p3.wrist) * t3) * 0.5f;
+			key.pole = Normalized(Lerp(p1.pole, p2.pole, t));
+			key.fingers = Normalized(Lerp(p1.fingers, p2.fingers, t));
+			key.palm = Normalized(Lerp(p1.palm, p2.palm, t));
+			return key;
+		}
 		// weapons (not bows) in 3rd person, as tuned in game: where the hand holds them next to other items (eye space,
 		// scaled with the body) and the blade's angles (degrees: tipped left, tipped away, turned around the blade)
 		const NiPoint3  kBodyWeaponOffset{ 0.0f, 1.4f, 0.0f };  // from the 3rd person hand position (fHand*)
@@ -1663,12 +1723,37 @@ namespace Inspect
 				break;
 			case Phase::kStow:
 			case Phase::kReturn:
-				{
+				if (state.thirdPerson) {
+					// over the shoulder into the backpack and back down along the sheath path: the stow plays it up to
+					// behind the shoulder (going over from the hold pose in its first half), the return plays the rest
+					// and hands the arm back to its animation
+					const bool      stow = state.phase == Phase::kStow;
+					const float     r = Clamp01(state.time / (stow ? settings.stowTime : settings.returnTime));
+					const StowKey   key = BodyStowAt(stow ? r * kBodyStowBack : kBodyStowBack + r * (kBodyStowLength - kBodyStowBack));
+					const float     b = stow ? Smooth(r / kBodyStowBlend) : 1.0f;
+					const NiPoint3  hold = at({ holdAt.x, holdAt.y + state.distanceOffset, holdAt.z });
+					const NiMatrix3 holdTurn = AlignAxes({ 1, 0, 0 }, { 0, 1, 0 }, holdFingers, holdPalm);
+					const NiMatrix3 path = AlignAxes({ 1, 0, 0 }, { 0, 1, 0 }, a_body.Direction(key.fingers), a_body.Direction(key.palm));
+					const NiMatrix3 turn = Slerp(holdTurn, path, b);
+					goal.wrist = at(key.wrist) + (hold - at(kBodyStow[0].wrist)) * (1.0f - b);
+					goal.pole = Normalized(Lerp(goal.pole, a_body.Direction(key.pole), b));
+					goal.fingers = Column(turn, 0);
+					goal.palm = Column(turn, 1);
+					if (goal.hand && handFrame) {
+						goal.hand = Slerp(state.holdHand, AlignAxes(handFrame->fingerAxis, handFrame->palmAxis, Column(path, 0), Column(path, 1)), b);
+					}
+					goal.wristBend = kBodyStowWristBend;
+					if (!stow) {
+						goal.weight = 1.0f - Smooth((r - kBodyReturnFade) / (1.0f - kBodyReturnFade));
+						goal.curl = scaled(goal.weight);
+					}
+					break;
+				} else {
 					const float s = state.phase == Phase::kStow ? Smooth(state.time / settings.stowTime) : 1.0f;
 					// quadratic curve hold -> via -> end
 					const NiPoint3 start = at({ holdAt.x, holdAt.y + state.distanceOffset, holdAt.z });
-					const NiPoint3 via = at(state.thirdPerson ? kBodyStowVia : kStowVia);
-					const NiPoint3 end = at(state.thirdPerson ? kBodyStowEnd : kStowEnd);
+					const NiPoint3 via = at(kStowVia);
+					const NiPoint3 end = at(kStowEnd);
 					goal.wrist = start * ((1.0f - s) * (1.0f - s)) + via * (2.0f * (1.0f - s) * s) + end * (s * s);
 					const NiMatrix3 hold = AlignAxes({ 1, 0, 0 }, { 0, 1, 0 }, holdFingers, holdPalm);
 					const NiMatrix3 stow = AlignAxes({ 1, 0, 0 }, { 0, 1, 0 }, stowFingers, stowPalm);

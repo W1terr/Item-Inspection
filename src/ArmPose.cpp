@@ -45,7 +45,6 @@ namespace ArmPose
 		constexpr float kHiddenScale = 0.01f;  // an upper arm scaled below this was hidden by another mod
 		constexpr float kPi = 3.14159265f;
 		constexpr float kMaxWristTwist = 2.8f;   // radians (160 degrees) the hinged arm's wrist may turn from its animation
-		constexpr float kMaxWristBend = 0.6f;    // radians (35 degrees) the hinged arm's wrist may bend away from its animation
 		// The elbow's hinge in upper arm space: the forearm of every skeleton (vanilla, beast, XPMSSE, 1st person) bends
 		// around the upper arm's X axis; bending further turns it around -X
 		const NiPoint3 kHinge{ -1.0f, 0.0f, 0.0f };
@@ -678,8 +677,8 @@ namespace ArmPose
 			const NiMatrix3 turn = AxisAngle(forearmAxis, TwistAngle(delta, forearmAxis));
 			const NiMatrix3 bend = delta * turn.Transpose();
 			const float     bent = 2.0f * std::acos(std::clamp(std::abs(ToQuat(bend).w), 0.0f, 1.0f));
-			if (bent > kMaxWristBend) {
-				result[kHand] = Slerp(NiMatrix3{}, bend, kMaxWristBend / bent) * turn * skeleton.animated[kHand];
+			if (bent > a_goal.wristBend) {
+				result[kHand] = Slerp(NiMatrix3{}, bend, a_goal.wristBend / bent) * turn * skeleton.animated[kHand];
 			}
 		}
 		float          twist = TwistAngle(result[kHand] * skeleton.animated[kHand].Transpose(), forearmAxis);

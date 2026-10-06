@@ -44,7 +44,9 @@ in 3rd person, then the item comes to your hand.
 - [CommonLibSSE-NG](https://github.com/alandtse/CommonLibVR/tree/ng) (MIT) and the
   [SKSE Menu Framework](https://github.com/QTR-Modding/SKSE-Menu-Framework-3-API) API (LGPL-2.1).
 - The telekinesis hand effect, light and grab sound are the vanilla Telekinesis spell's (Skyrim.esm); the fist that
-  holds weapons starts from the game's 1st person one-handed idle. Both are used from the game while it runs.
+  holds weapons starts from the game's 1st person one-handed idle. Both are used from the game while it runs. The
+  3rd person motion of putting an item in the backpack follows the vanilla bow sheath animation (bow_unequip),
+  mirrored to the right hand.
 
 ## License
 
