@@ -13,6 +13,8 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <unordered_map>
+#include <unordered_set>
 
 namespace logs = SKSE::log;
 using namespace std::literals;

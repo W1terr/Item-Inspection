@@ -42,6 +42,7 @@ namespace Settings
 			a_func("General", "bTelekinesis", a_values.telekinesis);
 			a_func("General", "bTelekinesisLight", a_values.telekinesisLight);
 			a_func("General", "bTelekinesisSound", a_values.telekinesisSound);
+			a_func("General", "bItemSound", a_values.itemSound);
 			a_func("General", "fTelekinesisSize", a_values.telekinesisSize, kEffectSize);
 			a_func("General", "bSkipInCombat", a_values.skipInCombat);
 			a_func("General", "bSkipGold", a_values.skipGold);
@@ -60,6 +61,8 @@ namespace Settings
 			a_func("Controls", "iPutBackGamepadKey", a_values.putBackGamepadKey);
 			a_func("Controls", "iLookKey", a_values.lookKey);
 			a_func("Controls", "iLookGamepadKey", a_values.lookGamepadKey);
+			a_func("Controls", "iSwitchViewKey", a_values.switchViewKey);
+			a_func("Controls", "iSwitchViewGamepadKey", a_values.switchViewGamepadKey);
 			a_func("Controls", "bInvertLookY", a_values.invertLookY);
 			a_func("Controls", "fMouseSensitivity", a_values.mouseSensitivity, kSensitivity);
 			a_func("Controls", "fGamepadSensitivity", a_values.gamepadSensitivity, kSensitivity);
@@ -87,6 +90,20 @@ namespace Settings
 			a_func("Bows", "fBowUp", a_values.bowUp, kHoldUp);
 			a_func("Bows", "fBowLeanLeft", a_values.bowLeanLeft, kHandAngle);
 			a_func("Bows", "fBowLeanForward", a_values.bowLeanForward, kHandAngle);
+			a_func("ThirdPerson", "bThirdPerson", a_values.thirdPerson);
+			a_func("ThirdPerson", "fCameraRight", a_values.cameraRight, kCameraSide);
+			a_func("ThirdPerson", "fCameraBack", a_values.cameraBack, kCameraBack);
+			a_func("ThirdPerson", "fCameraUp", a_values.cameraUp, kCameraUp);
+			a_func("ThirdPerson", "fCameraTime", a_values.cameraTime, kTime);
+			a_func("ThirdPerson", "fAnimationWait", a_values.animationWait, kWait);
+			a_func("ThirdPerson", "bStandStill", a_values.standStill);
+			a_func("ThirdPerson", "fItemSize", a_values.bodyItemScale, kItemScale);
+			a_func("ThirdPerson", "fItemRight", a_values.bodyItemRight, kItemOffset);
+			a_func("ThirdPerson", "fItemForward", a_values.bodyItemForward, kItemOffset);
+			a_func("ThirdPerson", "fItemUp", a_values.bodyItemUp, kItemOffset);
+			a_func("ThirdPerson", "fHandRight", a_values.bodyHoldRight, kHoldRight);
+			a_func("ThirdPerson", "fHandForward", a_values.bodyHoldForward, kHoldForward);
+			a_func("ThirdPerson", "fHandUp", a_values.bodyHoldUp, kBodyHoldUp);
 			a_func("Hold", "fRaiseTime", a_values.raiseTime, kTime);
 			a_func("Hold", "fStowTime", a_values.stowTime, kTime);
 			a_func("Hold", "fReturnTime", a_values.returnTime, kTime);

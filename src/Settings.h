@@ -13,6 +13,7 @@ namespace Settings
 		bool telekinesis{ true };       // the item floats over the hand with the telekinesis hand effect
 		bool telekinesisLight{ true };  // the spell's orange hand light
 		bool telekinesisSound{ true };  // the grab sound when the item is picked up, put away or put back
+		bool itemSound{ true };         // the item's own pickup sound when it reaches the hand
 		float telekinesisSize{ 2.0f };  // scale of the hand effect (vanilla 1 is barely visible)
 		bool skipInCombat{ true };      // normal pickup while in combat
 		bool skipGold{ true };
@@ -32,6 +33,8 @@ namespace Settings
 		int   putBackGamepadKey{ 277 };  // B
 		int   lookKey{ 257 };            // right mouse: held, the mouse turns the head (hand and item stay), released it turns back
 		int   lookGamepadKey{ 281 };     // RT: held, the right stick turns the head
+		int   switchViewKey{ 33 };       // F: switches between 3rd and 1st person while holding (with the fade)
+		int   switchViewGamepadKey{ 273 };  // RS (right stick click), like the game's own view switch
 		bool  invertLookY{ false };
 		float mouseSensitivity{ 1.0f };
 		float gamepadSensitivity{ 1.0f };
@@ -42,12 +45,12 @@ namespace Settings
 		float holdForward{ 31.4f };
 		float holdUp{ -12.1f };
 		float holdHeight{ 9.1f };    // how far the item floats above the palm
-		float itemRight{ -1.3f };    // item offset from its place over the palm, eye space
-		float itemForward{ 5.7f };
-		float itemUp{ 1.0f };
-		float handTurn{ 0.0f };      // degrees: the hand turned right (+) / left around the up axis
-		float handTilt{ 8.0f };      // degrees: fingers tilted up (+) / down
-		float handRoll{ -17.0f };    // degrees: palm rolled around the fingers
+		float itemRight{ -2.0f };    // item offset from its place over the palm, eye space
+		float itemForward{ -0.3f };
+		float itemUp{ -4.7f };
+		float handTurn{ 2.0f };      // degrees: the hand turned right (+) / left around the up axis
+		float handTilt{ 14.0f };      // degrees: fingers tilted up (+) / down
+		float handRoll{ -26.0f };    // degrees: palm rolled around the fingers
 		float maxItemSize{ 20.0f };  // radius; bigger items are shown smaller
 		// [Weapons] held by the grip: where the hand is (eye space) and how the blade leans, degrees
 		float weaponRight{ 17.6f };
@@ -57,11 +60,29 @@ namespace Settings
 		float weaponLeanForward{ 16.0f };  // blade tipped away from you
 		float weaponRoll{ 12.0f };         // turned around the blade
 		// [Bows] bows and crossbows: held further out (about arm's length) and more upright, so more of them is in view
-		float bowRight{ 17.0f };
+		float bowRight{ 16.4f };
 		float bowForward{ 30.4f };
 		float bowUp{ -10.3f };
 		float bowLeanLeft{ 18.0f };
 		float bowLeanForward{ -7.0f };
+		// [ThirdPerson] in 3rd person the camera flies in over the right shoulder instead of switching to 1st person.
+		// Game units from the eyes in the direction the player faces (right, forward / back, up), scaled with the body.
+		bool  thirdPerson{ true };
+		float cameraRight{ 60.0f };
+		float cameraBack{ 21.6f };
+		float cameraUp{ 24.7f };
+		float cameraTime{ 0.75f };  // seconds the camera flies in (and back)
+		// seconds a pickup in 3rd person waits so Immersive Interactions' pickup animation plays first (only when that
+		// mod is loaded; its "well timed" option off adds kLateAnimationWait)
+		float animationWait{ 0.8f };
+		bool  standStill{ true };  // the body's animation (idles too) settles and stops while the item is held
+		float bodyItemScale{ 0.7f };  // items (not weapons) are shown this much smaller in 3rd person
+		float bodyItemRight{ 0.0f };  // item offset from its place over the palm, as the camera sees it
+		float bodyItemForward{ 0.0f };
+		float bodyItemUp{ 0.0f };
+		float bodyHoldRight{ 17.5f };  // where the hand holds the item, seen from the eyes
+		float bodyHoldForward{ 24.7f };
+		float bodyHoldUp{ -35.0f };
 		float raiseTime{ 0.45f };
 		float stowTime{ 0.6f };
 		float returnTime{ 0.5f };
@@ -77,13 +98,19 @@ namespace Settings
 	inline constexpr Range kHoldRight{ -20.0f, 30.0f };
 	inline constexpr Range kHoldForward{ 8.0f, 40.0f };
 	inline constexpr Range kHoldUp{ -35.0f, 10.0f };
+	inline constexpr Range kBodyHoldUp{ -50.0f, 10.0f };
+	inline constexpr Range kItemScale{ 0.2f, 1.5f };
 	inline constexpr Range kMaxItemSize{ 2.0f, 60.0f };
 	inline constexpr Range kHoldHeight{ 0.0f, 25.0f };
 	inline constexpr Range kHandAngle{ -90.0f, 90.0f };
 	inline constexpr Range kItemOffset{ -25.0f, 25.0f };
 	inline constexpr Range kEffectSize{ 0.5f, 5.0f };
 	inline constexpr Range kTime{ 0.05f, 3.0f };
+	inline constexpr Range kWait{ 0.0f, 3.0f };
 	inline constexpr Range kFadeTime{ 0.05f, 1.0f };
+	inline constexpr Range kCameraSide{ -90.0f, 90.0f };
+	inline constexpr Range kCameraBack{ 0.0f, 150.0f };
+	inline constexpr Range kCameraUp{ -40.0f, 60.0f };
 
 	const Values& Get();
 	Values&       Edit();  // the menu changes values in place, then calls Save()

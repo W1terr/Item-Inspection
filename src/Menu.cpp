@@ -137,6 +137,7 @@ namespace Menu
 				Checkbox("Sound", v.telekinesisSound, "The telekinesis grab sound when you pick the item up, put it in the backpack or put it back.");
 				ImGui::Unindent();
 			}
+			Checkbox("Item sound", v.itemSound, "The item's own pickup sound when it reaches your hand.");
 			Checkbox("Show the key hint", v.showHint, "The keys to put the item away or back, on screen while you hold it.");
 			Checkbox("Everyone waits for you", v.worldWaits,
 				"While you hold an item nobody talks to you, attacks you or can hurt you:\npeople pause what they are doing until you put the item away.");
@@ -165,6 +166,7 @@ namespace Menu
 			KeyRow("Put in backpack", "store", v.storeKey, v.storeGamepadKey);
 			KeyRow("Put back", "putback", v.putBackKey, v.putBackGamepadKey);
 			KeyRow("Look around (hold)", "look", v.lookKey, v.lookGamepadKey);
+			KeyRow("Switch view", "switchview", v.switchViewKey, v.switchViewGamepadKey);
 			Slider("Mouse speed", v.mouseSensitivity, Settings::kSensitivity, "%.2f", "How fast moving the mouse turns the item.");
 			Slider("Gamepad speed", v.gamepadSensitivity, Settings::kSensitivity, "%.2f", "How fast the right stick turns the item.");
 			Checkbox("Invert up / down", v.invertY);
@@ -206,6 +208,32 @@ namespace Menu
 			Slider("Bow hand up", v.bowUp, Settings::kHoldUp, "%.1f", "Game units above (negative: below) your eyes.");
 			Slider("Bow lean left", v.bowLeanLeft, Settings::kHandAngle, "%.0f", "Degrees the bow tips to the left (-: right) from straight up.");
 			Slider("Bow lean forward", v.bowLeanForward, Settings::kHandAngle, "%.0f", "Degrees the bow tips away from you (-: towards you).");
+
+			Header("Third person");
+			Checkbox("Stay in third person", v.thirdPerson,
+				"In 3rd person the camera moves in over your shoulder instead of switching to 1st person,\n"
+				"and you see your hand put the item in the backpack behind your back.");
+			if (v.thirdPerson) {
+				ImGui::Indent();
+				Slider("Camera right", v.cameraRight, Settings::kCameraSide, "%.1f", "Game units the camera is to the right of your eyes.");
+				Slider("Camera back", v.cameraBack, Settings::kCameraBack, "%.1f", "Game units the camera is behind your eyes.");
+				Slider("Camera up", v.cameraUp, Settings::kCameraUp, "%.1f", "Game units the camera is above (negative: below) your eyes.");
+				Slider("Camera move time", v.cameraTime, Settings::kTime, "%.2f s", "Seconds the camera takes to fly in and back.");
+				Checkbox("Stand still while holding", v.standStill,
+					"Your character goes back to standing and holds still while looking at the item,\n"
+					"instead of playing idle animations.");
+				Slider("Hand right (3rd person)", v.bodyHoldRight, Settings::kHoldRight, "%.1f", "Game units to the right of your eyes.");
+				Slider("Hand forward (3rd person)", v.bodyHoldForward, Settings::kHoldForward, "%.1f", "Game units in front of your eyes.");
+				Slider("Hand up (3rd person)", v.bodyHoldUp, Settings::kBodyHoldUp, "%.1f", "Game units above (negative: below) your eyes.");
+				Slider("Item size (3rd person)", v.bodyItemScale, Settings::kItemScale, "%.2f", "Items (not weapons) are shown this much smaller in 3rd person.");
+				Slider("Item right (3rd person)", v.bodyItemRight, Settings::kItemOffset, "%.1f", "Moves the item to the right (-: left) as the camera sees it.");
+				Slider("Item forward (3rd person)", v.bodyItemForward, Settings::kItemOffset, "%.1f", "Moves the item away from the camera (-: towards it).");
+				Slider("Item up (3rd person)", v.bodyItemUp, Settings::kItemOffset, "%.1f", "Moves the item up (-: down) as the camera sees it.");
+				ImGui::Unindent();
+			}
+			Slider("Wait for the pickup animation", v.animationWait, Settings::kWait, "%.2f s",
+				"Seconds a pickup in 3rd person waits, so the pickup animation of Immersive Interactions\n"
+				"plays first. Only when that mod is installed, 0 = don't wait.");
 
 			Header("Animation (seconds)");
 			Slider("Hand comes up", v.raiseTime, Settings::kTime, "%.2f");

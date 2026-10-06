@@ -4,17 +4,21 @@ SKSE plugin for Skyrim SE / AE, inspired by the item pickups of Crimson Desert.
 
 When you take an item from the world it doesn't go straight to your inventory:
 
-1. The camera switches to 1st person (with a short fade from 3rd person) and your right hand brings the item up.
+1. Your right hand brings the item up. In 1st person you see it from your eyes; in 3rd person the camera flies in over
+   your right shoulder and your character holds it (or, if you turn that off, the camera switches to 1st person with a
+   short fade). In 3rd person your character goes back to standing and holds still while looking at the item.
 2. Move the mouse (or the right stick) to turn the item and look at it from every side. The mouse wheel brings it closer
    or moves it farther. Hold the right mouse button (gamepad RT) to look around; the hand and the item stay put.
 3. Press **E** (gamepad **A**) to put it in your backpack: the item comes down onto your palm, the hand goes down and
    behind your back, and the item is added to the inventory.
    Press **R** (gamepad **B**) to put it back where it was instead.
+   Press **F** (gamepad right stick click) to switch between 3rd and 1st person while you hold it (with a short fade).
 
-Afterwards the camera goes back to 3rd person if you were in 3rd person.
+Afterwards the camera goes back to where it was (or stays in the view you switched to with F).
 
 - Small items float over your open hand with the Telekinesis spell's hand effect; your fingers move while you turn them.
 - Weapons are held by the grip, bows like an archer holds them (string towards you). The mouse turns the hand.
+- When the item reaches your hand you hear its own pickup sound.
 - While you hold an item the world waits: nobody talks to you, attacks you or can hurt you. The crosshair, compass and
   bars are hidden, and the keys to put the item away or back stay on screen.
 - By default you look at each kind of item only the first time you take it in a playthrough (remembered in the save);
@@ -23,7 +27,9 @@ Afterwards the camera goes back to 3rd person if you were in 3rd person.
   Putting it away opens the inventory again (Skyrim AE only).
 
 The arm is animated procedurally in the plugin: no animation files, no behavior patches, no plugin (ESP).
-Works with skeleton replacers such as XPMSSE.
+Works with skeleton replacers such as XPMSSE, and with Improved Camera SE and SmoothCam. With
+[Immersive Interactions](https://www.nexusmods.com/skyrimspecialedition/mods/47670) its pickup animation plays first
+in 3rd person, then the item comes to your hand.
 
 ## Requirements
 

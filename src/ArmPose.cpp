@@ -43,6 +43,19 @@ namespace ArmPose
 
 		constexpr float kThumbCurl = 0.3f;     // the thumb bends around the fingers' axis, so only a part of the curl
 		constexpr float kHiddenScale = 0.01f;  // an upper arm scaled below this was hidden by another mod
+		constexpr float kPi = 3.14159265f;
+		constexpr float kMaxWristTwist = 2.8f;   // radians (160 degrees) the hinged arm's wrist may turn from its animation
+		constexpr float kMaxWristBend = 0.6f;    // radians (35 degrees) the hinged arm's wrist may bend away from its animation
+		// The elbow's hinge in upper arm space: the forearm of every skeleton (vanilla, beast, XPMSSE, 1st person) bends
+		// around the upper arm's X axis; bending further turns it around -X
+		const NiPoint3 kHinge{ -1.0f, 0.0f, 0.0f };
+		// A hand without finger bones (the player's 3rd person skeleton can have none until gauntlets bring them): its
+		// axes from the reference skeletons' finger offsets (hand space), fingers along +Z, the palm towards -Y
+		const NiPoint3  kDefaultFingerAxis{ 0.045f, -0.010f, 0.999f };
+		const NiPoint3  kDefaultPalmAxis{ -0.31f, -0.95f, 0.0f };
+		constexpr float kDefaultPalmLength = 8.3f;
+
+		constexpr bool Optional(std::size_t a_bone) { return a_bone == kTwist1 || a_bone == kTwist2 || a_bone >= kFirstFinger; }
 
 		// The fingers of a hand holding a one-handed weapon: their local rotations (w, x, y, z), taken from the first frame
 		// of the 1st person one-handed idle (meshes\actors\character\_1stperson\animations\1hm_idle.hkx), thumb first,
@@ -66,8 +79,38 @@ namespace ArmPose
 			NiPoint3                                  palmAxis;    // hand local: out of the palm
 			float                                     palmLength{ 0.0f };
 			float                                     hiddenScale{ 0.0f };  // the upper arm's scale before we showed it again, 0 = never hidden
+			std::array<std::optional<NiMatrix3>, kBoneCount> open{};  // finger bones: local rotation of the mesh's open hand
+			// Skin bones without a node (the player's 3rd person skeleton can lack the twist / finger bones: the skin then
+			// keeps bones[i] null and reads its world transform from elsewhere, so posing the arm left that skin behind,
+			// torn): the skin is pointed at our own transform, which moves with the posed forearm / hand
+			struct Redirect
+			{
+				RE::NiPointer<RE::NiSkinInstance> skin;
+				std::uint32_t                     index;
+				const NiTransform*                original;  // what the skin read before
+				std::size_t                       follow;    // kFore / kHand
+				float                             share;     // of the wrist twist (forearm slots)
+				int                               finger{ -1 };  // a finger joint (thumb first), -1 = moves with the hand as it is
+				int                               joint{ 0 };
+				std::optional<NiMatrix3>          open;          // finger joints: rotation of the mesh's open hand, below the joint before
+				NiTransform                       animated;  // this frame, read from original
+				NiTransform                       world;     // what the skin reads now
+			};
+			std::vector<std::unique_ptr<Redirect>> redirects;  // stable addresses: the skins point into them
 		};
 		Skeleton skeleton;
+
+		// the skins read their own transforms again
+		void DropRedirects()
+		{
+			for (const auto& redirect : skeleton.redirects) {
+				auto& pointer = redirect->skin->boneWorldTransforms[redirect->index];
+				if (pointer == &redirect->world) {
+					pointer = redirect->original;
+				}
+			}
+			skeleton.redirects.clear();
+		}
 
 		std::string BoneName(std::size_t a_bone)
 		{
@@ -97,6 +140,10 @@ namespace ArmPose
 		{
 			NiTransform link;
 			const auto  chainParent = ChainParent(a_bone);
+			if (!skeleton.bones[a_bone]) {
+				skeleton.links[a_bone] = link;
+				return true;  // an optional bone the skeleton doesn't have
+			}
 			if (chainParent != kBoneCount) {
 				const RE::NiAVObject* target = skeleton.bones[chainParent];
 				const RE::NiAVObject* node = skeleton.bones[a_bone]->parent;
@@ -122,44 +169,352 @@ namespace ArmPose
 			return true;
 		}
 
+		// all nodes below a_root with this name
+		std::vector<RE::NiAVObject*> NodesNamed(RE::NiAVObject* a_root, const std::string& a_name)
+		{
+			std::vector<RE::NiAVObject*> nodes;
+			RE::BSVisit::TraverseScenegraphObjects(a_root, [&](RE::NiAVObject* a_object) {
+				if (a_object->name == a_name.c_str()) {
+					nodes.push_back(a_object);
+				}
+				return RE::BSVisit::BSVisitControl::kContinue;
+			});
+			return nodes;
+		}
+
+		// how many skinned meshes below a_root use a_node as a bone
+		int SkinUses(RE::NiAVObject* a_root, const RE::NiAVObject* a_node)
+		{
+			int uses = 0;
+			RE::BSVisit::TraverseScenegraphGeometries(a_root, [&](RE::BSGeometry* a_geometry) {
+				const auto skin = a_geometry->GetGeometryRuntimeData().skinInstance.get();
+				const auto data = skin ? skin->skinData.get() : nullptr;
+				if (data && skin->bones) {
+					for (std::uint32_t i = 0; i < data->GetBoneCount(); ++i) {
+						if (skin->bones[i] == a_node) {
+							++uses;
+							break;
+						}
+					}
+				}
+				return RE::BSVisit::BSVisitControl::kContinue;
+			});
+			return uses;
+		}
+
+		std::string ParentNames(const RE::NiAVObject* a_node, int a_count)
+		{
+			std::string names;
+			for (auto node = a_node->parent; node && a_count > 0; node = node->parent, --a_count) {
+				names += std::format(" < {}", node->name.c_str() ? node->name.c_str() : "?");
+			}
+			return names;
+		}
+
+		// the nearest parent of a_node with this name
+		RE::NiAVObject* Ancestor(RE::NiAVObject* a_node, const std::string& a_name)
+		{
+			auto node = a_node ? a_node->parent : nullptr;
+			for (int depth = 0; node && depth < 8; node = node->parent, ++depth) {
+				if (node->name == a_name.c_str()) {
+					return node;
+				}
+			}
+			return nullptr;
+		}
+
+		// The right hand the meshes are skinned to. A model can bring its own copy of the arm bones (with the same names,
+		// found first by name); posing such a copy left the skin on the real bones behind and tore it. The copy most
+		// skinned meshes use wins.
+		RE::NiAVObject* SkinnedHand(RE::NiAVObject* a_root)
+		{
+			const auto      hands = NodesNamed(a_root, BoneName(kHand));
+			RE::NiAVObject* best = nullptr;
+			int             bestUses = -1;
+			for (const auto hand : hands) {
+				const int uses = SkinUses(a_root, hand);
+				if (hands.size() > 1) {
+					logs::info("  right hand bone used by {} skinned meshes:{}", uses, ParentNames(hand, 6));
+				}
+				if (uses > bestUses) {
+					best = hand;
+					bestUses = uses;
+				}
+			}
+			if (hands.size() > 1) {
+				logs::info("{} right hand bones in the skeleton, posing the one {} meshes use", hands.size(), bestUses);
+			}
+			return best;
+		}
+
+		float DistanceToSegment(const NiPoint3& a_point, const NiPoint3& a_from, const NiPoint3& a_to, float* a_along = nullptr)
+		{
+			const NiPoint3 segment = a_to - a_from;
+			const float    length2 = segment.Dot(segment);
+			const float    along = length2 > 1e-6f ? (a_point - a_from).Dot(segment) / length2 : 0.0f;
+			if (a_along) {
+				*a_along = along;
+			}
+			return (a_point - (a_from + segment * std::clamp(along, 0.0f, 1.0f))).Length();
+		}
+
+		// A mesh's node-less hand slots are its fingers when there are 15 of them that line up as 5 chains of 3 joints,
+		// each further from the wrist than the one before (skins list the bones like the skeleton: thumb first)
+		bool FingerSlots(const std::vector<Skeleton::Redirect*>& a_slots, const NiPoint3& a_wrist)
+		{
+			if (a_slots.size() != kFingers * kJoints) {
+				return false;
+			}
+			for (int finger = 0; finger < kFingers; ++finger) {
+				float reach = 0.0f;
+				for (int joint = 0; joint < kJoints; ++joint) {
+					const auto&    slot = a_slots[finger * kJoints + joint];
+					const NiPoint3 p = slot->animated.translate;
+					const float    distance = (p - a_wrist).Length();
+					if (distance <= reach) {
+						return false;
+					}
+					if (joint > 0) {
+						const float gap = (p - a_slots[finger * kJoints + joint - 1]->animated.translate).Length();
+						if (gap < 0.5f || gap > 6.0f) {
+							return false;
+						}
+					}
+					reach = distance;
+				}
+			}
+			for (std::size_t i = 0; i < a_slots.size(); ++i) {
+				a_slots[i]->finger = static_cast<int>(i) / kJoints;
+				a_slots[i]->joint = static_cast<int>(i) % kJoints;
+			}
+			return true;
+		}
+
+		// A bone's rotation in the mesh's bind pose (the open hand meshes are made in), relative to its parent bone:
+		// skinToBone maps the mesh into the bone, so the bone in the mesh is its inverse
+		NiMatrix3 BindRotation(const RE::NiSkinData* a_data, std::uint32_t a_parent, std::uint32_t a_bone)
+		{
+			return a_data->GetBoneDataSkinToBone(a_parent).rotate * a_data->GetBoneDataSkinToBone(a_bone).rotate.Transpose();
+		}
+
+		// the open hand for a mesh's finger slots (needs the hand bone in the same mesh)
+		void SetOpenSlots(RE::NiSkinInstance* a_skin, const std::vector<Skeleton::Redirect*>& a_slots)
+		{
+			const auto data = a_skin->skinData.get();
+			for (std::uint32_t i = 0; i < data->GetBoneCount(); ++i) {
+				if (a_skin->bones[i] != skeleton.bones[kHand]) {
+					continue;
+				}
+				for (const auto slot : a_slots) {
+					const auto parent = slot->joint == 0 ? i : a_slots[slot->finger * kJoints + slot->joint - 1]->index;
+					slot->open = BindRotation(data, parent, slot->index);
+				}
+				return;
+			}
+		}
+
+		// the open hand for real finger bones, from a mesh skinned to the finger and the bone before it
+		void FindOpenFingers(RE::NiAVObject* a_root)
+		{
+			RE::BSVisit::TraverseScenegraphGeometries(a_root, [&](RE::BSGeometry* a_geometry) {
+				const auto skin = a_geometry->GetGeometryRuntimeData().skinInstance.get();
+				const auto data = skin ? skin->skinData.get() : nullptr;
+				if (!data || !skin->bones) {
+					return RE::BSVisit::BSVisitControl::kContinue;
+				}
+				std::unordered_map<const RE::NiAVObject*, std::uint32_t> indices;
+				for (std::uint32_t i = 0; i < data->GetBoneCount(); ++i) {
+					if (skin->bones[i]) {
+						indices.emplace(skin->bones[i], i);
+					}
+				}
+				for (std::size_t bone = kFirstFinger; bone < kBoneCount; ++bone) {
+					const auto own = indices.find(skeleton.bones[bone]);
+					const auto parent = indices.find(skeleton.bones[ChainParent(bone)]);
+					if (!skeleton.open[bone] && skeleton.bones[bone] && own != indices.end() && parent != indices.end()) {
+						// relative to the chain parent; the bone's own local is below the nodes in between
+						skeleton.open[bone] = skeleton.links[bone].rotate.Transpose() * BindRotation(data, parent->second, own->second);
+					}
+				}
+				return RE::BSVisit::BSVisitControl::kContinue;
+			});
+		}
+
+		// The node-less bones of the meshes skinned to the arm, by where they are now (the animated pose): near the
+		// forearm -> follow the forearm (twist bones), near the hand -> follow the hand (fingers), else left alone
+		void FindRedirects(RE::NiAVObject* a_root)
+		{
+			const auto&     b = skeleton.bones;
+			const NiPoint3  elbow = b[kFore]->world.translate;
+			const NiPoint3  wrist = b[kHand]->world.translate;
+			const NiPoint3  tips = wrist + b[kHand]->world.rotate * skeleton.fingerAxis * (skeleton.palmLength * 1.6f * b[kHand]->world.scale);
+			constexpr float kNear = 8.0f;
+			int             distant = 0;
+			int             fingerMeshes = 0;
+			RE::BSVisit::TraverseScenegraphGeometries(a_root, [&](RE::BSGeometry* a_geometry) {
+				const auto skin = a_geometry->GetGeometryRuntimeData().skinInstance.get();
+				const auto data = skin ? skin->skinData.get() : nullptr;
+				if (!data || !skin->bones || !skin->boneWorldTransforms) {
+					return RE::BSVisit::BSVisitControl::kContinue;
+				}
+				const auto count = data->GetBoneCount();
+				bool       uses = false;
+				for (std::uint32_t i = 0; i < count; ++i) {
+					uses |= skin->bones[i] && std::ranges::find(b, skin->bones[i]) != b.end();
+				}
+				if (!uses) {
+					return RE::BSVisit::BSVisitControl::kContinue;
+				}
+				std::vector<Skeleton::Redirect*> handSlots;
+				for (std::uint32_t i = 0; i < count; ++i) {
+					const auto world = skin->boneWorldTransforms[i];
+					if (skin->bones[i] || !world) {
+						continue;
+					}
+					const NiPoint3 p = world->translate;
+					float          along = 0.0f;
+					const float    toFore = DistanceToSegment(p, elbow, wrist, &along);
+					const float    toHand = DistanceToSegment(p, wrist, tips);
+					if (std::min(toFore, toHand) > kNear) {
+						++distant;  // the other arm
+					} else {
+						const bool hand = toHand < toFore;
+						skeleton.redirects.push_back(std::make_unique<Skeleton::Redirect>(Skeleton::Redirect{ RE::NiPointer<RE::NiSkinInstance>(skin), i,
+							world, hand ? kHand : kFore, hand ? 0.0f : std::clamp(along, 0.0f, 1.0f) }));
+						skeleton.redirects.back()->animated = *world;
+						skeleton.redirects.back()->world = *world;
+						if (hand) {
+							handSlots.push_back(skeleton.redirects.back().get());
+						}
+					}
+				}
+				if (FingerSlots(handSlots, wrist)) {
+					SetOpenSlots(skin, handSlots);
+					++fingerMeshes;
+				}
+				return RE::BSVisit::BSVisitControl::kContinue;
+			});
+			if (!skeleton.redirects.empty()) {
+				logs::info("{} skin bones without a node follow the arm ({} meshes with fingers), {} of the other arm left alone",
+					skeleton.redirects.size(), fingerMeshes, distant);
+			}
+		}
+
+		// ---- diagnostics: the right arm's nodes as the game has them ----
+
+		std::unordered_map<const RE::NiAVObject*, int> AllSkinUses(RE::NiAVObject* a_root)
+		{
+			std::unordered_map<const RE::NiAVObject*, int> uses;
+			RE::BSVisit::TraverseScenegraphGeometries(a_root, [&](RE::BSGeometry* a_geometry) {
+				const auto skin = a_geometry->GetGeometryRuntimeData().skinInstance.get();
+				const auto data = skin ? skin->skinData.get() : nullptr;
+				if (data && skin->bones) {
+					for (std::uint32_t i = 0; i < data->GetBoneCount(); ++i) {
+						if (skin->bones[i]) {
+							++uses[skin->bones[i]];
+						}
+					}
+				}
+				return RE::BSVisit::BSVisitControl::kContinue;
+			});
+			return uses;
+		}
+
+		void DumpNode(const RE::NiAVObject* a_node, int a_depth, const std::unordered_map<const RE::NiAVObject*, int>& a_uses)
+		{
+			const auto&  r = a_node->local.rotate;
+			const bool   identity = SameRotation(r, NiMatrix3{});
+			const auto   use = a_uses.find(a_node);
+			const char*  name = a_node->name.c_str() ? a_node->name.c_str() : "?";
+			logs::info("  {:{}}{} t=({:.2f}, {:.2f}, {:.2f}){}{}", "", a_depth * 2, name, a_node->local.translate.x, a_node->local.translate.y,
+				a_node->local.translate.z, identity ? "" : " rotated", use != a_uses.end() ? std::format(", skin bone of {} meshes", use->second) : "");
+			const auto node = a_depth < 7 ? const_cast<RE::NiAVObject*>(a_node)->AsNode() : nullptr;
+			if (!node) {
+				return;
+			}
+			for (const auto& child : node->GetChildren()) {
+				if (child && child->AsNode()) {
+					DumpNode(child.get(), a_depth + 1, a_uses);
+				}
+			}
+		}
+
+		void DumpArm(RE::NiAVObject* a_root)
+		{
+			const auto uses = AllSkinUses(a_root);
+			for (const auto clavicle : NodesNamed(a_root, "NPC R Clavicle [RClv]")) {
+				logs::info("Right arm nodes below {}{}:", clavicle->name.c_str(), ParentNames(clavicle, 3));
+				DumpNode(clavicle, 0, uses);
+			}
+		}
+
 		// empty when the arm was found, else why not
 		std::string Search(RE::NiAVObject* a_root)
 		{
+			DropRedirects();
 			skeleton = {};
-			for (std::size_t i = 0; i < kBoneCount; ++i) {
-				skeleton.bones[i] = a_root->GetObjectByName(BoneName(i).c_str());
-				if (!skeleton.bones[i]) {
+			// the chain from the skinned hand: the arm bones above it, the twist bones below the forearm, the fingers
+			// below the hand
+			auto& b = skeleton.bones;
+			b[kHand] = SkinnedHand(a_root);
+			b[kFore] = Ancestor(b[kHand], BoneName(kFore));
+			b[kUpper] = Ancestor(b[kFore], BoneName(kUpper));
+			for (const auto bone : { kUpper, kFore, kHand }) {
+				if (!b[bone]) {
 					skeleton = {};
-					return std::format("1st person skeleton has no bone {}", BoneName(i));
+					return std::format("the skeleton has no bone {} above the right hand", BoneName(bone));
 				}
 			}
-			const auto& b = skeleton.bones;
 			if (!b[kUpper]->parent) {
 				skeleton = {};
-				return "1st person upper arm has no parent";
+				return "the upper arm has no parent";
 			}
+			// twist bones and fingers if the skeleton has them where they belong
+			int missing = 0;
 			for (std::size_t i = 0; i < kBoneCount; ++i) {
-				if (!UpdateLink(i)) {
-					const auto error = std::format("1st person bone {} doesn't hang from {}", BoneName(i), BoneName(ChainParent(i)));
-					skeleton = {};
-					return error;
+				if (Optional(i)) {
+					const auto parent = (i == kTwist1 || i == kTwist2) ? b[kUpper] : b[kHand];
+					b[i] = parent->GetObjectByName(BoneName(i).c_str());
 				}
+				if (!UpdateLink(i)) {
+					if (!Optional(i)) {
+						const auto error = std::format("bone {} doesn't hang from {}", BoneName(i), BoneName(ChainParent(i)));
+						skeleton = {};
+						return error;
+					}
+					b[i] = nullptr;
+					UpdateLink(i);
+				}
+				missing += b[i] ? 0 : 1;
 			}
 			// hand axes from the finger bones' fixed offsets (hand local space)
-			const NiPoint3 middle = Combine(skeleton.links[FingerBone(2, 0)], b[FingerBone(2, 0)]->local).translate;
-			const NiPoint3 thumb = Combine(skeleton.links[FingerBone(0, 0)], b[FingerBone(0, 0)]->local).translate;
-			skeleton.fingerAxis = Normalized(middle);
-			skeleton.palmAxis = Normalized(thumb.Cross(middle));  // right hand: thumb x fingers points out of the palm
-			skeleton.palmLength = middle.Length();
+			const auto middleBone = b[FingerBone(2, 0)];
+			const auto thumbBone = b[FingerBone(0, 0)];
+			if (middleBone && thumbBone) {
+				const NiPoint3 middle = Combine(skeleton.links[FingerBone(2, 0)], middleBone->local).translate;
+				const NiPoint3 thumb = Combine(skeleton.links[FingerBone(0, 0)], thumbBone->local).translate;
+				skeleton.fingerAxis = Normalized(middle);
+				skeleton.palmAxis = Normalized(thumb.Cross(middle));  // right hand: thumb x fingers points out of the palm
+				skeleton.palmLength = middle.Length();
+			} else {
+				skeleton.fingerAxis = kDefaultFingerAxis;
+				skeleton.palmAxis = kDefaultPalmAxis;
+				skeleton.palmLength = kDefaultPalmLength;
+			}
 			skeleton.root = a_root;
 			for (std::size_t i = 0; i < kBoneCount; ++i) {
-				skeleton.animated[i] = b[i]->local.rotate;
-				skeleton.written[i] = b[i]->local.rotate;
+				if (b[i]) {
+					skeleton.animated[i] = b[i]->local.rotate;
+					skeleton.written[i] = b[i]->local.rotate;
+				}
 			}
-			logs::info("Found the 1st person arm (upper arm {:.1f}, forearm {:.1f}, palm {:.1f}{})",
+			logs::info("Found the arm (upper arm {:.1f}, forearm {:.1f}, palm {:.1f}{}{}), hanging from{}",
 				Combine(skeleton.links[kFore], b[kFore]->local).translate.Length(),
 				Combine(skeleton.links[kHand], b[kHand]->local).translate.Length(), skeleton.palmLength,
-				b[kFore]->parent != b[kUpper] ? ", extra nodes between the bones" : "");
+				b[kFore]->parent != b[kUpper] ? ", extra nodes between the bones" : "",
+				missing ? std::format(", {} of its twist / finger bones missing", missing) : "", ParentNames(b[kUpper], 5));
+			FindRedirects(a_root);
+			FindOpenFingers(a_root);
 			return {};
 		}
 
@@ -197,6 +552,7 @@ namespace ArmPose
 			}
 			if (warnedRoot != a_root) {
 				logs::warn("{}, can't pose the arm", error);
+				DumpArm(a_root);
 				warnedRoot = a_root;
 			}
 			return false;
@@ -206,6 +562,9 @@ namespace ArmPose
 		void RefreshAnimated()
 		{
 			for (std::size_t i = 0; i < kBoneCount; ++i) {
+				if (!skeleton.bones[i]) {
+					continue;
+				}
 				const auto& current = skeleton.bones[i]->local.rotate;
 				if (!skeleton.posed || !SameRotation(current, skeleton.written[i])) {
 					skeleton.animated[i] = current;
@@ -239,6 +598,14 @@ namespace ArmPose
 			return std::nullopt;
 		}
 		RefreshAnimated();
+		std::erase_if(skeleton.redirects, [](const auto& a_redirect) {
+			const auto pointer = a_redirect->skin->boneWorldTransforms[a_redirect->index];
+			if (pointer != a_redirect->original && pointer != &a_redirect->world) {
+				return true;  // the skin was linked again meanwhile, its new transform is the game's business
+			}
+			a_redirect->animated = *a_redirect->original;
+			return false;
+		});
 		const auto& b = skeleton.bones;
 		const float weight = Clamp01(a_goal.weight);
 
@@ -266,10 +633,34 @@ namespace ArmPose
 		const NiPoint3 elbow = shoulder + direction * along + Normalized(pole) * out;
 
 		NiTransform ikUpper = upper;
-		ikUpper.rotate = RotationBetween(fore.translate - shoulder, elbow - shoulder) * upper.rotate;
-		NiTransform     ikFore = Combine(ikUpper, AnimatedLocal(kFore));
-		const NiPoint3  handNow = Combine(ikFore, AnimatedLocal(kHand)).translate;
-		ikFore.rotate = RotationBetween(handNow - ikFore.translate, wrist - ikFore.translate) * ikFore.rotate;
+		NiTransform ikFore;
+		if (a_goal.hinge) {
+			// the elbow bends only around its hinge (upper arm X in the skeletons), by the angle that gives the reach
+			const NiTransform foreRel = AnimatedLocal(kFore);  // the forearm in upper arm space
+			const NiPoint3    handOffset = AnimatedLocal(kHand).translate;
+			const NiPoint3    bendNow = Normalized(foreRel.rotate * handOffset);
+			const NiPoint3    upperAxis = Normalized(foreRel.translate);
+			const float       bentNow = std::atan2(kHinge.Dot(upperAxis.Cross(bendNow)), upperAxis.Dot(bendNow));
+			const float       inside = std::acos(std::clamp(
+				(upperLength * upperLength + foreLength * foreLength - reach * reach) / (2.0f * upperLength * foreLength), -1.0f, 1.0f));
+			NiTransform       foreNew = foreRel;
+			foreNew.rotate = AxisAngle(kHinge, (kPi - inside) - bentNow) * foreRel.rotate;
+			// then the whole arm turns at the shoulder: the wrist onto the target, the elbow towards the pole
+			const NiPoint3 wristRel = Combine(foreNew, AnimatedLocal(kHand)).translate;
+			ikUpper.rotate = RotationBetween(upper.rotate * wristRel, direction) * upper.rotate;
+			const NiPoint3 elbowDir = ikUpper.rotate * foreNew.translate;
+			const NiPoint3 elbowSide = elbowDir - direction * direction.Dot(elbowDir);
+			if (elbowSide.Length() > 1e-3f) {
+				const float roll = std::atan2(direction.Dot(elbowSide.Cross(pole)), elbowSide.Dot(pole));
+				ikUpper.rotate = AxisAngle(direction, roll) * ikUpper.rotate;
+			}
+			ikFore.rotate = ikUpper.rotate * foreNew.rotate;
+		} else {
+			ikUpper.rotate = RotationBetween(fore.translate - shoulder, elbow - shoulder) * upper.rotate;
+			ikFore = Combine(ikUpper, AnimatedLocal(kFore));
+			const NiPoint3 handNow = Combine(ikFore, AnimatedLocal(kHand)).translate;
+			ikFore.rotate = RotationBetween(handNow - ikFore.translate, wrist - ikFore.translate) * ikFore.rotate;
+		}
 		const NiMatrix3 ikHandRotation = a_goal.hand ? *a_goal.hand : AlignAxes(skeleton.fingerAxis, skeleton.palmAxis, a_goal.fingers, a_goal.palm);
 
 		// back to local rotations, blended over the animation
@@ -280,8 +671,28 @@ namespace ArmPose
 
 		// spread the wrist's twist over the forearm so the skin doesn't wring at the wrist
 		const NiPoint3 forearmAxis = Normalized(b[kHand]->local.translate);  // in the hand's parent space
-		const float    twist = TwistAngle(result[kHand] * skeleton.animated[kHand].Transpose(), forearmAxis);
+		if (a_goal.hinge) {
+			// the wrist bends at most so far from its animation (it may still turn around the forearm): the hand points
+			// a bit off rather than the wrist folding over
+			const NiMatrix3 delta = result[kHand] * skeleton.animated[kHand].Transpose();
+			const NiMatrix3 turn = AxisAngle(forearmAxis, TwistAngle(delta, forearmAxis));
+			const NiMatrix3 bend = delta * turn.Transpose();
+			const float     bent = 2.0f * std::acos(std::clamp(std::abs(ToQuat(bend).w), 0.0f, 1.0f));
+			if (bent > kMaxWristBend) {
+				result[kHand] = Slerp(NiMatrix3{}, bend, kMaxWristBend / bent) * turn * skeleton.animated[kHand];
+			}
+		}
+		float          twist = TwistAngle(result[kHand] * skeleton.animated[kHand].Transpose(), forearmAxis);
+		if (a_goal.hinge && std::abs(twist) > kMaxWristTwist) {
+			// more than a wrist turns: the palm stays a bit off rather than the forearm wringing
+			const float limited = std::clamp(twist, -kMaxWristTwist, kMaxWristTwist);
+			result[kHand] = AxisAngle(forearmAxis, limited - twist) * result[kHand];
+			twist = limited;
+		}
 		for (const auto [bone, share] : { std::pair{ kTwist1, 0.66f }, std::pair{ kTwist2, 0.33f } }) {
+			if (!b[bone]) {
+				continue;
+			}
 			const NiPoint3 axis = skeleton.links[bone].rotate.Transpose() * (skeleton.links[kHand].rotate * forearmAxis);
 			result[bone] = AxisAngle(axis, twist * share) * skeleton.animated[bone];
 		}
@@ -297,31 +708,79 @@ namespace ArmPose
 			// the game's own weapon grip, blended in with the arm
 			for (std::size_t i = 0; i < kWeaponGrip.size(); ++i) {
 				const auto bone = kFirstFinger + i;
+				if (!b[bone]) {
+					continue;
+				}
 				result[bone] = Slerp(skeleton.animated[bone], ToMatrix(kWeaponGrip[i]), weight);
 			}
 		} else {
+			for (std::size_t bone = kFirstFinger; bone < kBoneCount; ++bone) {
+				if (a_goal.open > 0.0f && skeleton.open[bone]) {
+					result[bone] = Slerp(skeleton.animated[bone], *skeleton.open[bone], a_goal.open * weight);
+				}
+			}
 			for (int finger = 0; finger < kFingers; ++finger) {
 				const float curl = a_goal.curl[finger] * (finger == 0 ? kThumbCurl : 1.0f);
-				if (curl == 0.0f) {
+				if (curl == 0.0f || !b[FingerBone(finger, 0)] || !b[FingerBone(finger, 1)] || !b[FingerBone(finger, 2)]) {
 					continue;
 				}
 				NiTransform parent = finalHand;
 				for (int joint = 0; joint < kJoints; ++joint) {
 					const auto     bone = FingerBone(finger, joint);
 					const NiPoint3 axis = (parent.rotate * skeleton.links[bone].rotate).Transpose() * curlAxis;
-					result[bone] = AxisAngle(Normalized(axis), curl) * skeleton.animated[bone];
+					result[bone] = AxisAngle(Normalized(axis), curl) * result[bone];
 					parent = Combine(parent, WithRotation(bone, result[bone]));
 				}
 			}
 		}
 
 		for (std::size_t i = 0; i < kBoneCount; ++i) {
-			b[i]->local.rotate = result[i];
-			skeleton.written[i] = result[i];
+			if (b[i]) {
+				b[i]->local.rotate = result[i];
+				skeleton.written[i] = result[i];
+			}
 		}
 		skeleton.posed = true;
 		RE::NiUpdateData update{};
 		b[kUpper]->Update(update);
+
+		// the skin bones without a node: finger slots chained below the hand like finger bones (base joint first, as
+		// found), the others moved with the forearm (with their share of the wrist twist) or the hand
+		const NiPoint3 twistAxis = skeleton.links[kHand].rotate * forearmAxis;
+		// finger slots: each joint below the one before it (base joint first, as found), bent like the finger bones
+		NiTransform fingerParentAnimated = hand;
+		NiTransform fingerParentPosed = b[kHand]->world;
+		for (const auto& redirect : skeleton.redirects) {
+			if (redirect->finger >= 0) {
+				if (redirect->joint == 0) {
+					fingerParentAnimated = hand;
+					fingerParentPosed = b[kHand]->world;
+				}
+				NiTransform local = ToLocal(fingerParentAnimated, redirect->animated);
+				if (a_goal.weaponGrip) {
+					local.rotate = Slerp(local.rotate, ToMatrix(kWeaponGrip[redirect->finger * kJoints + redirect->joint]), weight);
+				} else {
+					if (a_goal.open > 0.0f && redirect->open) {
+						local.rotate = Slerp(local.rotate, *redirect->open, a_goal.open * weight);
+					}
+					if (const float curl = a_goal.curl[redirect->finger] * (redirect->finger == 0 ? kThumbCurl : 1.0f); curl != 0.0f) {
+						local.rotate = AxisAngle(Normalized(fingerParentPosed.rotate.Transpose() * curlAxis), curl) * local.rotate;
+					}
+				}
+				fingerParentAnimated = redirect->animated;
+				redirect->world = Combine(fingerParentPosed, local);
+				fingerParentPosed = redirect->world;
+				redirect->skin->boneWorldTransforms[redirect->index] = &redirect->world;
+				continue;
+			}
+			const bool  onHand = redirect->follow == kHand;
+			NiTransform relative = ToLocal(onHand ? hand : fore, redirect->animated);
+			if (!onHand) {
+				relative.rotate = AxisAngle(twistAxis, twist * redirect->share) * relative.rotate;
+			}
+			redirect->world = Combine(onHand ? b[kHand]->world : b[kFore]->world, relative);
+			redirect->skin->boneWorldTransforms[redirect->index] = &redirect->world;
+		}
 
 		Hand handResult;
 		handResult.world = b[kHand]->world;
@@ -348,6 +807,9 @@ namespace ArmPose
 	{
 		if (skeleton.posed && skeleton.bones[kUpper]) {
 			for (std::size_t i = 0; i < kBoneCount; ++i) {
+				if (!skeleton.bones[i]) {
+					continue;
+				}
 				auto& rotation = skeleton.bones[i]->local.rotate;
 				if (SameRotation(rotation, skeleton.written[i])) {
 					rotation = skeleton.animated[i];
@@ -360,6 +822,7 @@ namespace ArmPose
 			RE::NiUpdateData update{};
 			skeleton.bones[kUpper]->Update(update);
 		}
+		DropRedirects();
 		// the 1st person skeleton can be rebuilt between pickups (game load, race change): look the bones up again
 		// next time instead of trusting old pointers
 		skeleton = {};
@@ -367,6 +830,7 @@ namespace ArmPose
 
 	void Forget()
 	{
+		DropRedirects();  // we hold the skins, so they're still there to point back
 		skeleton = {};
 	}
 

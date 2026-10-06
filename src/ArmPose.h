@@ -1,10 +1,13 @@
 #pragma once
 
-// Procedural pose of the 1st person right arm: two-bone IK (upper arm, forearm) to a wrist target, the hand turned to a
-// wanted finger / palm direction, the wrist twist spread over the forearm twist bones, fingers curled a little.
-// The result is blended over the animation's pose by a weight, so the arm moves smoothly in and out of it.
+// Procedural pose of the player's right arm (1st person skeleton, or the 3rd person body): two-bone IK (upper arm,
+// forearm) to a wrist target, the hand turned to a wanted finger / palm direction, the wrist twist spread over the
+// forearm twist bones, fingers curled a little or closed around a weapon. Skin bones the skeleton lacks (null in the
+// skin) are moved along with the posed forearm / hand. The result is blended over the animation's pose by a weight,
+// so the arm moves smoothly in and out of it.
 //
-// Must run after the animation wrote the bones of this frame (we use the 1st person camera update for that).
+// Must run after the animation wrote the bones of this frame (1st person: the camera update; 3rd person: right after
+// the player's skeletons were updated).
 // Only rotations are changed. Bones the animation didn't rewrite since our last call keep their animated values from
 // our own cache, so calling it several times per frame doesn't stack.
 namespace ArmPose
@@ -19,6 +22,9 @@ namespace ArmPose
 		float        weight{ 0.0f };  // 0 = animation, 1 = this goal
 		std::array<float, 5> curl{};  // extra bend per joint for each finger (thumb first), radians
 		bool                 weaponGrip{ false };  // fingers in the game's own grip around a weapon handle (instead of curl)
+		bool                 hinge{ false };       // the elbow only bends around its hinge, the wrist bends and turns within
+		                                           // limits: for an arm posed far from its animation (3rd person, hanging at the side)
+		float                open{ 0.0f };         // fingers straightened towards the hand mesh's open hand (its bind pose), 0..1
 	};
 
 	struct Hand
@@ -38,7 +44,7 @@ namespace ArmPose
 	};
 	std::optional<HandFrame> Frame(RE::NiAVObject* a_root);
 
-	// a_root: the player's 1st person skeleton. Returns the posed hand, nothing if the skeleton lacks the bones.
+	// a_root: the player's 1st person skeleton or 3rd person body. Returns the posed hand, nothing if the arm isn't found.
 	std::optional<Hand> Apply(RE::NiAVObject* a_root, const Goal& a_goal);
 
 	// Gives the bones back to the animation (writes the animated values back once) and forgets them

@@ -5,6 +5,8 @@ Crimson Desert by Pearl Abyss.
 
 Built with CommonLibSSE-NG (https://github.com/alandtse/CommonLibVR/tree/ng, MIT) and the SKSE Menu Framework 3 API
 (QTR-Modding, https://github.com/QTR-Modding/SKSE-Menu-Framework-3-API, LGPL-2.1).
+The 3rd person camera works together with SmoothCam through its modder API (SmoothCamAPI.h by mwilsnd,
+https://github.com/mwilsnd/SkyrimSE-SmoothCam).
 
 Needs SKSE by the SKSE team and Address Library for SKSE Plugins by meh321.
 
