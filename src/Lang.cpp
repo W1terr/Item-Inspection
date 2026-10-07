@@ -225,6 +225,16 @@ namespace Lang
 				"Pancerze, ubrania i biżuteria trafiają od razu do ekwipunku, jak w zwykłej grze.",
 				"Броня, одежда и украшения сразу попадают в инвентарь, как в обычной игре.",
 				"防具・衣服・装飾品は通常どおり直接インベントリに入ります。", "護甲、衣物與飾品會像原版一樣直接放進物品欄。" },
+			{ "Harvested plants", "Plantes récoltées", "Geerntete Pflanzen", "Piante raccolte", "Plantas recolectadas", "Zbierane rośliny",
+				"Собранные растения", "採取した植物", "採集的植物" },
+			{ "Ingredients from plants, mushrooms, nests... go straight into the inventory, like in the normal game.",
+				"Les ingrédients des plantes, champignons, nids... vont directement dans l'inventaire, comme dans le jeu normal.",
+				"Zutaten von Pflanzen, Pilzen, Nestern... kommen wie im normalen Spiel direkt ins Inventar.",
+				"Gli ingredienti di piante, funghi, nidi... vanno direttamente nell'inventario, come nel gioco normale.",
+				"Los ingredientes de plantas, setas, nidos... van directamente al inventario, como en el juego normal.",
+				"Składniki z roślin, grzybów, gniazd... trafiają od razu do ekwipunku, jak w zwykłej grze.",
+				"Ингредиенты с растений, грибов, гнёзд... сразу попадают в инвентарь, как в обычной игре.",
+				"植物・キノコ・巣などから採れる材料は通常どおり直接インベントリに入ります。", "植物、蘑菇、鳥巢等採集到的材料會像原版一樣直接放進物品欄。" },
 
 			// Controls
 			{ "Controls", "Commandes", "Steuerung", "Comandi", "Controles", "Sterowanie", "Управление", "操作", "操作" },
@@ -404,6 +414,35 @@ namespace Lang
 			{ "Turns the weapon around the blade.", "Fait tourner l'arme autour de la lame.", "Dreht die Waffe um die Klinge.",
 				"Ruota l'arma attorno alla lama.", "Gira el arma alrededor de la hoja.", "Obraca broń wokół ostrza.",
 				"Поворачивает оружие вокруг клинка.", "刃を軸に武器をひねります。", "以刀刃為軸轉動武器。" },
+			{ "Hand along the handle", "Main le long de la poignée", "Hand entlang des Griffs", "Mano lungo l'impugnatura",
+				"Mano a lo largo de la empuñadura", "Dłoń wzdłuż rękojeści", "Рука вдоль рукояти", "柄に沿った手の位置", "手沿握柄移動" },
+			{ "Turn in the hand", "Rotation dans la main", "In der Hand drehen", "Rotazione nella mano", "Giro en la mano", "Obrót w dłoni",
+				"Поворот в руке", "手の中でひねる", "手中轉動" },
+			{ "Tilt in the hand", "Inclinaison dans la main", "In der Hand neigen", "Inclinazione nella mano", "Inclinación en la mano",
+				"Pochylenie w dłoni", "Наклон в руке", "手の中で傾ける", "手中傾斜" },
+			{ "Slides your hand along the weapon's handle: + towards the pommel, - towards the blade.\n"
+			  "For weapons your hand holds at the wrong place, e.g. at the crossguard.",
+				"Fait glisser la main le long de la poignée : + vers le pommeau, - vers la lame.\n"
+				"Pour les armes que la main tient au mauvais endroit, par exemple à la garde.",
+				"Verschiebt die Hand entlang des Griffs: + zum Knauf, - zur Klinge.\n"
+				"Für Waffen, die die Hand an der falschen Stelle hält, z. B. an der Parierstange.",
+				"Fa scorrere la mano lungo l'impugnatura: + verso il pomolo, - verso la lama.\n"
+				"Per le armi che la mano tiene nel punto sbagliato, ad esempio sull'elsa.",
+				"Desliza la mano a lo largo de la empuñadura: + hacia el pomo, - hacia la hoja.\n"
+				"Para armas que la mano sujeta en el lugar equivocado, por ejemplo en la guarda.",
+				"Przesuwa dłoń wzdłuż rękojeści: + w stronę głowicy, - w stronę ostrza.\n"
+				"Dla broni trzymanej w złym miejscu, np. za jelec.",
+				"Сдвигает руку вдоль рукояти: + к навершию, - к клинку.\n"
+				"Для оружия, которое рука держит не там, например за гарду.",
+				"手を柄に沿って動かします。+ で柄頭側、- で刃側へ。\n鍔を握ってしまうなど、持つ位置がずれている武器に。",
+				"沿著握柄移動手的位置：+ 朝柄頭，- 朝刀刃。\n適用於手握錯位置的武器，例如握在護手上。" },
+			{ "Turns the weapon around its blade inside your fist, in degrees.", "Fait tourner l'arme autour de sa lame dans le poing, en degrés.",
+				"Dreht die Waffe in der Faust um ihre Klinge, in Grad.", "Ruota l'arma attorno alla lama dentro il pugno, in gradi.",
+				"Gira el arma alrededor de su hoja dentro del puño, en grados.", "Obraca broń wokół ostrza w pięści, w stopniach.",
+				"Поворачивает оружие вокруг клинка в кулаке, в градусах.", "握ったまま刃を軸に武器をひねります（度）。", "在拳中以刀刃為軸轉動武器（度）。" },
+			{ "Tilts the weapon inside your fist, in degrees.", "Incline l'arme dans le poing, en degrés.", "Neigt die Waffe in der Faust, in Grad.",
+				"Inclina l'arma dentro il pugno, in gradi.", "Inclina el arma dentro del puño, en grados.", "Pochyla broń w pięści, w stopniach.",
+				"Наклоняет оружие в кулаке, в градусах.", "握ったまま武器を傾けます（度）。", "在拳中傾斜武器（度）。" },
 			{ "Bows and crossbows", "Arcs et arbalètes", "Bögen und Armbrüste", "Archi e balestre", "Arcos y ballestas", "Łuki i kusze",
 				"Луки и арбалеты", "弓とクロスボウ", "弓與弩" },
 			{ "Bow hand right", "Main (arc) à droite", "Bogenhand rechts", "Mano dell'arco a destra", "Mano del arco a la derecha",
@@ -444,7 +483,7 @@ namespace Lang
 			// Third person
 			{ "Third person", "Troisième personne", "Third-Person-Sicht", "Terza persona", "Tercera persona", "Widok trzecioosobowy", "Третье лицо", "三人称視点", "第三人稱" },
 			{ "Stay in third person", "Rester à la troisième personne", "In der Third-Person-Sicht bleiben", "Resta in terza persona", "Quedarse en tercera persona", "Zostań w widoku trzecioosobowym", "Оставаться от третьего лица", "三人称視点のままにする", "保持第三人稱" },
-			{ "In 3rd person the camera moves in over your shoulder instead of switching to 1st person,\nand you see your hand put the item in the backpack behind your back.", "À la 3e personne, la caméra se rapproche par-dessus votre épaule au lieu de passer à la 1re personne,\net vous voyez votre main ranger l'objet dans le sac derrière votre dos.", "In der Third-Person-Sicht fährt die Kamera über deine Schulter heran, statt in die Ego-Sicht zu wechseln,\nund du siehst, wie deine Hand den Gegenstand hinter dem Rücken in den Rucksack steckt.", "In terza persona la visuale si avvicina sopra la spalla invece di passare alla prima persona,\ne vedi la tua mano mettere l'oggetto nello zaino dietro la schiena.", "En tercera persona la cámara se acerca por encima del hombro en lugar de pasar a primera persona,\ny ves cómo tu mano guarda el objeto en la mochila a tu espalda.", "W widoku trzecioosobowym kamera przybliża się nad ramię zamiast przełączać na widok pierwszoosobowy,\na ty widzisz, jak ręka chowa przedmiot do plecaka za plecami.", "От третьего лица камера приближается из-за плеча вместо переключения на вид от первого лица,\nи вы видите, как рука убирает предмет в рюкзак за спиной.", "三人称視点では一人称視点に切り替えず、カメラが肩越しに近づきます。\n手がアイテムを背中のバックパックにしまう様子が見えます。", "第三人稱時鏡頭會移到肩膀後方，而不是切換到第一人稱，\n還能看到手把物品放進背後的背包。" },
+			{ "In 3rd person the camera moves in over your shoulder instead of switching to 1st person,\nand you see your hand put the item away in a pocket at your hip.", "À la 3e personne, la caméra se rapproche par-dessus votre épaule au lieu de passer à la 1re personne,\net vous voyez votre main ranger l'objet dans une poche à la hanche.", "In der Third-Person-Sicht fährt die Kamera über deine Schulter heran, statt in die Ego-Sicht zu wechseln,\nund du siehst, wie deine Hand den Gegenstand in eine Tasche an der Hüfte steckt.", "In terza persona la visuale si avvicina sopra la spalla invece di passare alla prima persona,\ne vedi la tua mano mettere l'oggetto in una tasca sul fianco.", "En tercera persona la cámara se acerca por encima del hombro en lugar de pasar a primera persona,\ny ves cómo tu mano guarda el objeto en un bolsillo de la cadera.", "W widoku trzecioosobowym kamera przybliża się nad ramię zamiast przełączać na widok pierwszoosobowy,\na ty widzisz, jak ręka chowa przedmiot do kieszeni przy biodrze.", "От третьего лица камера приближается из-за плеча вместо переключения на вид от первого лица,\nи вы видите, как рука убирает предмет в карман на бедре.", "三人称視点では一人称視点に切り替えず、カメラが肩越しに近づきます。\n手がアイテムを腰のポケットにしまう様子が見えます。", "第三人稱時鏡頭會移到肩膀後方，而不是切換到第一人稱，\n還能看到手把物品收進腰間的口袋。" },
 			{ "Camera right", "Caméra à droite", "Kamera rechts", "Visuale a destra", "Cámara a la derecha", "Kamera w prawo", "Камера вправо", "カメラ 右", "鏡頭 右" },
 			{ "Camera back", "Caméra en arrière", "Kamera hinten", "Visuale indietro", "Cámara atrás", "Kamera do tyłu", "Камера назад", "カメラ 後ろ", "鏡頭 後" },
 			{ "Camera up", "Caméra en haut", "Kamera oben", "Visuale in alto", "Cámara arriba", "Kamera w górę", "Камера вверх", "カメラ 上", "鏡頭 上" },
@@ -502,9 +541,44 @@ namespace Lang
 				"Mueve el objeto hacia arriba (-: abajo) según lo ve la cámara.", "Przesuwa przedmiot w górę (-: w dół) z punktu widzenia kamery.",
 				"Сдвигает предмет вверх (-: вниз) с точки зрения камеры.", "カメラから見てアイテムを上（-：下）に動かします。", "從鏡頭看，將物品向上（-：向下）移動。" },
 			{ "Switch view", "Changer de vue", "Ansicht wechseln", "Cambia visuale", "Cambiar vista", "Zmień widok", "Сменить вид", "視点切り替え", "切換視角" },
+			{ "Inspect key (hold)", "Touche d'inspection (maintenir)", "Untersuchen-Taste (halten)", "Tasto ispeziona (tieni premuto)",
+				"Tecla de inspeccionar (mantener)", "Klawisz oglądania (przytrzymaj)", "Клавиша осмотра (удерживать)", "調べるキー（長押し）",
+				"檢視鍵（按住）" },
+			{ "Hold a key to inspect", "Maintenir une touche pour inspecter", "Taste halten zum Untersuchen", "Tieni premuto un tasto per ispezionare",
+				"Mantener una tecla para inspeccionar", "Przytrzymaj klawisz, aby obejrzeć", "Удерживать клавишу для осмотра",
+				"キーを押しながら調べる", "按住按鍵才檢視" },
+			{ "On: an item goes to your hand only if you hold the inspect key while you press Activate\n"
+			  "(picking up, harvesting, QuickLoot's Take). A normal press picks it up as usual.",
+				"Activé : un objet va dans votre main seulement si vous maintenez la touche d'inspection en appuyant sur Activer\n"
+				"(ramasser, récolter, « Prendre » de QuickLoot). Un appui normal le ramasse comme d'habitude.",
+				"An: Ein Gegenstand kommt nur in deine Hand, wenn du beim Drücken von Aktivieren die Untersuchen-Taste hältst\n"
+				"(Aufheben, Ernten, „Nehmen“ von QuickLoot). Ein normaler Druck hebt ihn wie gewohnt auf.",
+				"Attivo: un oggetto va nella tua mano solo se tieni premuto il tasto ispeziona mentre premi Attiva\n"
+				"(raccogliere, raccogliere piante, \"Prendi\" di QuickLoot). Una pressione normale lo raccoglie come al solito.",
+				"Activado: un objeto va a tu mano solo si mantienes la tecla de inspeccionar al pulsar Activar\n"
+				"(recoger, cosechar, \"Coger\" de QuickLoot). Una pulsación normal lo recoge como siempre.",
+				"Włączone: przedmiot trafia do dłoni tylko, gdy przytrzymasz klawisz oglądania, naciskając Aktywuj\n"
+				"(podnoszenie, zbieranie roślin, „Weź” w QuickLoot). Zwykłe naciśnięcie podnosi go jak zwykle.",
+				"Включено: предмет попадает в руку, только если удерживать клавишу осмотра при нажатии «Активировать»\n"
+				"(подбор, сбор растений, «Взять» в QuickLoot). Обычное нажатие подбирает его как обычно.",
+				"オン：調べるキーを押しながら「調べる/起動」を押したときだけアイテムが手に来ます\n"
+				"（拾う、採取、QuickLootの「取る」）。普通に押すと通常どおり拾います。",
+				"開啟：只有在按住檢視鍵時按下「啟動」，物品才會拿到手上\n"
+				"（拾取、採集、QuickLoot 的「拿取」）。一般按下則照常拾取。" },
 			{ "Hand right (3rd person)", "Main à droite (3e personne)", "Hand rechts (Third Person)", "Mano a destra (terza persona)", "Mano a la derecha (tercera persona)", "Ręka w prawo (trzecia osoba)", "Рука вправо (третье лицо)", "手 右（三人称）", "手 右（第三人稱）" },
 			{ "Hand forward (3rd person)", "Main en avant (3e personne)", "Hand vorne (Third Person)", "Mano in avanti (terza persona)", "Mano adelante (tercera persona)", "Ręka do przodu (trzecia osoba)", "Рука вперёд (третье лицо)", "手 前（三人称）", "手 前（第三人稱）" },
 			{ "Hand up (3rd person)", "Main en haut (3e personne)", "Hand oben (Third Person)", "Mano in alto (terza persona)", "Mano arriba (tercera persona)", "Ręka w górę (trzecia osoba)", "Рука вверх (третье лицо)", "手 上（三人称）", "手 上（第三人稱）" },
+			{ "Weapon: hand along the handle (3rd person)", "Arme : main le long de la poignée (3e personne)", "Waffe: Hand entlang des Griffs (Third Person)",
+				"Arma: mano lungo l'impugnatura (terza persona)", "Arma: mano a lo largo de la empuñadura (tercera persona)",
+				"Broń: dłoń wzdłuż rękojeści (trzecia osoba)", "Оружие: рука вдоль рукояти (третье лицо)", "武器：柄に沿った手の位置（三人称）",
+				"武器：手沿握柄移動（第三人稱）" },
+			{ "Weapon: turn in the hand (3rd person)", "Arme : rotation dans la main (3e personne)", "Waffe: in der Hand drehen (Third Person)",
+				"Arma: rotazione nella mano (terza persona)", "Arma: giro en la mano (tercera persona)", "Broń: obrót w dłoni (trzecia osoba)",
+				"Оружие: поворот в руке (третье лицо)", "武器：手の中でひねる（三人称）", "武器：手中轉動（第三人稱）" },
+			{ "Weapon: tilt in the hand (3rd person)", "Arme : inclinaison dans la main (3e personne)", "Waffe: in der Hand neigen (Third Person)",
+				"Arma: inclinazione nella mano (terza persona)", "Arma: inclinación en la mano (tercera persona)",
+				"Broń: pochylenie w dłoni (trzecia osoba)", "Оружие: наклон в руке (третье лицо)", "武器：手の中で傾ける（三人称）",
+				"武器：手中傾斜（第三人稱）" },
 
 			{ "Animation (seconds)", "Animation (secondes)", "Animation (Sekunden)", "Animazione (secondi)", "Animación (segundos)",
 				"Animacja (sekundy)", "Анимация (секунды)", "アニメーション（秒）", "動畫（秒）" },
@@ -531,6 +605,127 @@ namespace Lang
 				"Подсказка клавиш на экране использует шрифт игры: на языке, отличном от языка игры, некоторые буквы могут не отображаться.",
 				"画面上のキーのヒントはゲームのフォントを使います。ゲームと異なる言語では一部の文字が表示されない場合があります。",
 				"畫面上的按鍵提示使用遊戲本身的字型：若與遊戲語言不同，部分文字可能無法顯示。" },
+
+			// QuickLoot
+			{ "QuickLoot", "QuickLoot", "QuickLoot", "QuickLoot", "QuickLoot", "QuickLoot", "QuickLoot", "QuickLoot", "QuickLoot" },
+			{ "Items taken with QuickLoot go to your hand", "Les objets pris avec QuickLoot passent par votre main",
+				"Mit QuickLoot genommene Gegenstände landen in deiner Hand", "Gli oggetti presi con QuickLoot finiscono nella tua mano",
+				"Los objetos cogidos con QuickLoot van a tu mano", "Przedmioty brane przez QuickLoot trafiają do ręki",
+				"Предметы, взятые через QuickLoot, сначала оказываются в руке", "QuickLootで取ったアイテムを手に取る",
+				"用 QuickLoot 拿取的物品會先拿在手上" },
+			{ "When you take an item from a container or a body with QuickLoot's \"Take\", your character searches it first\n"
+			  "and then holds the item like any other. Put it in the backpack to take it, or put it back into the container.\n"
+			  "\"Take All\" and \"Equip\" / \"Use\" work as usual.",
+				"Quand vous prenez un objet dans un conteneur ou sur un corps avec « Prendre » de QuickLoot, votre personnage le fouille d'abord\n"
+				"puis tient l'objet comme les autres. Mettez-le dans le sac pour le prendre, ou remettez-le dans le conteneur.\n"
+				"« Tout prendre » et « Équiper » / « Utiliser » fonctionnent comme d'habitude.",
+				"Wenn du mit „Nehmen“ von QuickLoot einen Gegenstand aus einem Behälter oder von einer Leiche nimmst, durchsucht deine Figur ihn zuerst\n"
+				"und hält den Gegenstand dann wie jeden anderen. Steck ihn in den Rucksack, um ihn zu nehmen, oder leg ihn in den Behälter zurück.\n"
+				"„Alles nehmen“ und „Ausrüsten“ / „Benutzen“ funktionieren wie gewohnt.",
+				"Quando prendi un oggetto da un contenitore o da un corpo con «Prendi» di QuickLoot, il tuo personaggio prima ci fruga dentro\n"
+				"e poi tiene l'oggetto come gli altri. Mettilo nello zaino per prenderlo, o rimettilo nel contenitore.\n"
+				"«Prendi tutto» e «Equipaggia» / «Usa» funzionano come al solito.",
+				"Cuando coges un objeto de un contenedor o de un cuerpo con «Coger» de QuickLoot, tu personaje primero lo registra\n"
+				"y luego sostiene el objeto como cualquier otro. Guárdalo en la mochila para cogerlo, o devuélvelo al contenedor.\n"
+				"«Coger todo» y «Equipar» / «Usar» funcionan como siempre.",
+				"Gdy bierzesz przedmiot z pojemnika lub ciała przyciskiem „Weź” w QuickLoot, twoja postać najpierw go przeszukuje,\n"
+				"a potem trzyma przedmiot jak każdy inny. Włóż go do plecaka, aby go wziąć, albo odłóż do pojemnika.\n"
+				"„Weź wszystko” i „Załóż” / „Użyj” działają jak zwykle.",
+				"Когда вы берёте предмет из контейнера или с тела кнопкой «Взять» в QuickLoot, персонаж сначала обыскивает его,\n"
+				"а затем держит предмет в руке, как любой другой. Положите его в рюкзак, чтобы забрать, или верните в контейнер.\n"
+				"«Взять всё» и «Экипировать» / «Использовать» работают как обычно.",
+				"QuickLootの「取る」で容器や死体からアイテムを取ると、まずキャラクターがそれを探り、\n"
+				"その後ほかのアイテムと同じように手に持ちます。バックパックにしまうと取得、元に戻すと容器に戻ります。\n"
+				"「すべて取る」と「装備」/「使う」は通常どおりです。",
+				"用 QuickLoot 的「拿取」從容器或屍體拿取物品時，角色會先翻找，\n"
+				"然後像其他物品一樣拿在手上。放進背包即可取得，或放回容器。\n"
+				"「全部拿取」與「裝備」/「使用」照常運作。" },
+			{ "Search animation", "Animation de fouille", "Durchsuchen-Animation", "Animazione di ricerca", "Animación de registrar",
+				"Animacja przeszukiwania", "Анимация обыска", "探るアニメーション", "翻找動畫" },
+			{ "Seconds your character searches the container first (the game's own searching animation).\n"
+			  "Only in 3rd person, 0 = no animation.",
+				"Secondes pendant lesquelles votre personnage fouille d'abord le conteneur (l'animation de fouille du jeu).\n"
+				"Seulement à la 3e personne, 0 = pas d'animation.",
+				"Sekunden, die deine Figur den Behälter zuerst durchsucht (die Durchsuchen-Animation des Spiels).\n"
+				"Nur in der Third-Person-Sicht, 0 = keine Animation.",
+				"Secondi in cui il tuo personaggio prima fruga nel contenitore (l'animazione di ricerca del gioco).\n"
+				"Solo in terza persona, 0 = nessuna animazione.",
+				"Segundos que tu personaje registra primero el contenedor (la animación de registrar del juego).\n"
+				"Solo en tercera persona, 0 = sin animación.",
+				"Ile sekund twoja postać najpierw przeszukuje pojemnik (animacja przeszukiwania z gry).\n"
+				"Tylko w widoku trzecioosobowym, 0 = bez animacji.",
+				"Сколько секунд персонаж сначала обыскивает контейнер (анимация обыска из игры).\n"
+				"Только от третьего лица, 0 = без анимации.",
+				"キャラクターが先に容器を探る秒数（ゲーム本来の探るアニメーション）。\n"
+				"三人称視点のみ。0 = アニメーションなし。",
+				"角色先翻找容器的秒數（遊戲原本的翻找動畫）。\n"
+				"僅限第三人稱，0 = 不播放動畫。" },
+			{ "Search again (same container)", "Fouiller à nouveau (même conteneur)", "Erneut durchsuchen (gleicher Behälter)",
+				"Cerca di nuovo (stesso contenitore)", "Registrar de nuevo (mismo contenedor)", "Ponowne przeszukanie (ten sam pojemnik)",
+				"Повторный обыск (тот же контейнер)", "再び探る（同じ容器）", "再次翻找（同一容器）" },
+			{ "Seconds of searching when you take another item from the container you just searched:\n"
+			  "a quick reach in. Until you look at another container. 0 = no animation.",
+				"Secondes de fouille quand vous prenez un autre objet dans le conteneur que vous venez de fouiller :\n"
+				"un geste rapide. Jusqu'à ce que vous regardiez un autre conteneur. 0 = pas d'animation.",
+				"Sekunden des Durchsuchens, wenn du einen weiteren Gegenstand aus dem gerade durchsuchten Behälter nimmst:\n"
+				"ein schneller Griff hinein. Bis du einen anderen Behälter ansiehst. 0 = keine Animation.",
+				"Secondi di ricerca quando prendi un altro oggetto dal contenitore appena frugato:\n"
+				"un gesto rapido. Finché non guardi un altro contenitore. 0 = nessuna animazione.",
+				"Segundos de registro cuando coges otro objeto del contenedor que acabas de registrar:\n"
+				"un gesto rápido. Hasta que mires otro contenedor. 0 = sin animación.",
+				"Ile sekund trwa przeszukiwanie, gdy bierzesz kolejny przedmiot z właśnie przeszukanego pojemnika:\n"
+				"szybkie sięgnięcie do środka. Do czasu, aż spojrzysz na inny pojemnik. 0 = bez animacji.",
+				"Сколько секунд длится обыск, когда вы берёте ещё один предмет из только что обысканного контейнера:\n"
+				"быстрое движение рукой. Пока вы не посмотрите на другой контейнер. 0 = без анимации.",
+				"探ったばかりの容器から別のアイテムを取るときに探る秒数：\n"
+				"さっと手を入れるだけ。別の容器を見るまで有効。0 = アニメーションなし。",
+				"從剛翻找過的容器再拿取其他物品時的翻找秒數：\n"
+				"快速伸手拿取。直到你看向其他容器為止。0 = 不播放動畫。" },
+			{ "Only big chests", "Seulement les grands coffres", "Nur große Truhen", "Solo i forzieri grandi", "Solo los cofres grandes",
+				"Tylko duże skrzynie", "Только большие сундуки", "大きな宝箱のみ", "僅限大型箱子" },
+			{ "Only items from real chests (wooden, noble, Dwemer, Falmer, ruins chests) go to your hand.\n"
+			  "Barrels, sacks, urns, drawers, wardrobes and bodies work as usual.",
+				"Seuls les objets des vrais coffres (en bois, nobles, dwemers, falmers, des ruines) vont dans votre main.\n"
+				"Tonneaux, sacs, urnes, commodes, armoires et corps fonctionnent comme d'habitude.",
+				"Nur Gegenstände aus echten Truhen (Holz-, Adels-, Dwemer-, Falmer-, Ruinentruhen) kommen in deine Hand.\n"
+				"Fässer, Säcke, Urnen, Kommoden, Schränke und Leichen funktionieren wie gewohnt.",
+				"Solo gli oggetti dei veri forzieri (di legno, nobili, dwemer, falmer, delle rovine) vanno nella tua mano.\n"
+				"Barili, sacchi, urne, cassettiere, armadi e cadaveri funzionano come al solito.",
+				"Solo los objetos de cofres de verdad (de madera, nobles, dwemer, falmer, de ruinas) van a tu mano.\n"
+				"Barriles, sacos, urnas, cómodas, armarios y cuerpos funcionan como siempre.",
+				"Tylko przedmioty z prawdziwych skrzyń (drewnianych, szlacheckich, dwemerskich, falmerskich, z ruin) trafiają do dłoni.\n"
+				"Beczki, worki, urny, komody, szafy i ciała działają jak zwykle.",
+				"В руку попадают только предметы из настоящих сундуков (деревянных, знатных, двемерских, фалмерских, из руин).\n"
+				"Бочки, мешки, урны, комоды, шкафы и тела работают как обычно.",
+				"本物の宝箱（木製・貴族・ドワーフ・ファルメル・遺跡の宝箱）のアイテムだけが手に来ます。\n"
+				"樽・袋・壺・引き出し・衣装棚・死体は通常どおりです。",
+				"只有真正的箱子（木箱、貴族箱、矮人箱、雪精靈箱、遺跡箱）裡的物品會拿到手上。\n"
+				"桶子、袋子、甕、抽屜、衣櫃與屍體照常運作。" },
+			{ "Also from bodies", "Aussi sur les corps", "Auch von Leichen", "Anche dai cadaveri", "También de los cuerpos", "Także z ciał",
+				"Также с тел", "死体からも", "也包括屍體" },
+			{ "Items you take from dead bodies (and corpses lying around) go to your hand too.\n"
+			  "Off: those are taken as usual.",
+				"Les objets que vous prenez sur les morts (et les cadavres qui traînent) vont aussi dans votre main.\n"
+				"Désactivé : ils sont pris comme d'habitude.",
+				"Gegenstände, die du von Toten (und herumliegenden Leichen) nimmst, kommen auch in deine Hand.\n"
+				"Aus: sie werden wie gewohnt genommen.",
+				"Anche gli oggetti presi dai morti (e dai cadaveri sparsi) vanno nella tua mano.\n"
+				"Disattivato: vengono presi come al solito.",
+				"Los objetos que coges de los muertos (y de los cadáveres tirados) también van a tu mano.\n"
+				"Desactivado: se cogen como siempre.",
+				"Przedmioty zabierane z martwych ciał (i leżących zwłok) też trafiają do dłoni.\n"
+				"Wyłączone: zabierane jak zwykle.",
+				"Предметы, которые вы берёте с мёртвых тел (и лежащих трупов), тоже попадают в руку.\n"
+				"Выключено: берутся как обычно.",
+				"死体（転がっている亡骸も）から取るアイテムも手に来ます。\n"
+				"オフ：通常どおり取ります。",
+				"從屍體（以及倒在各處的遺骸）拿取的物品也會拿到手上。\n"
+				"關閉：照常拿取。" },
+			{ "QuickLoot IE isn't installed: this has no effect.", "QuickLoot IE n'est pas installé : cette option n'a aucun effet.",
+				"QuickLoot IE ist nicht installiert: Diese Option hat keine Wirkung.", "QuickLoot IE non è installato: questa opzione non ha effetto.",
+				"QuickLoot IE no está instalado: esta opción no tiene efecto.", "QuickLoot IE nie jest zainstalowany: ta opcja nic nie robi.",
+				"QuickLoot IE не установлен: эта настройка ни на что не влияет.", "QuickLoot IE がインストールされていません：この設定は効果がありません。",
+				"未安裝 QuickLoot IE：此選項沒有作用。" },
 		};
 
 		const std::unordered_map<std::string_view, const Entry*>& Table()

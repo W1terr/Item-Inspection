@@ -20,6 +20,7 @@ namespace Settings
 		bool skipAmmo{ true };          // arrows / bolts
 		bool skipWeapons{ false };      // weapons (bows too) go straight into the inventory
 		bool skipArmor{ false };        // armor, clothes and jewelry go straight into the inventory
+		bool skipHarvest{ false };      // plants: their ingredient goes straight into the inventory (normal harvest)
 		bool showHint{ true };          // "[E] Put in backpack  [R] Put back" on screen while holding
 		bool worldWaits{ true };        // nobody talks to you, attacks or hurts you while you hold an item (AI paused)
 		bool fadeTransition{ true };    // short fade to black when the camera switches between 3rd and 1st person
@@ -35,6 +36,9 @@ namespace Settings
 		int   lookGamepadKey{ 281 };     // RT: held, the right stick turns the head
 		int   switchViewKey{ 33 };       // F: switches between 3rd and 1st person while holding (with the fade)
 		int   switchViewGamepadKey{ 273 };  // RS (right stick click), like the game's own view switch
+		bool  holdKeyToInspect{ false };  // items go to the hand only when this key is held while pressing Activate
+		int   inspectKey{ 42 };          // Left Shift
+		int   inspectGamepadKey{ 274 };  // LB
 		bool  invertLookY{ false };
 		float mouseSensitivity{ 1.0f };
 		float gamepadSensitivity{ 1.0f };
@@ -59,6 +63,14 @@ namespace Settings
 		float weaponLeanLeft{ 5.0f };      // blade tipped towards the left
 		float weaponLeanForward{ 16.0f };  // blade tipped away from you
 		float weaponRoll{ 12.0f };         // turned around the blade
+		// the weapon in the fist (models whose grip sits elsewhere, e.g. held at the crossguard): + slides the hand towards the
+		// pommel (units), turns the weapon around the blade / tilts it in the fist (degrees). 1st person, then 3rd person
+		float gripSlide{ 7.0f };
+		float gripTurn{ 0.0f };
+		float gripTilt{ 0.0f };
+		float bodyGripSlide{ 7.0f };
+		float bodyGripTurn{ 0.0f };
+		float bodyGripTilt{ 0.0f };
 		// [Bows] bows and crossbows: held further out (about arm's length) and more upright, so more of them is in view
 		float bowRight{ 16.4f };
 		float bowForward{ 30.4f };
@@ -83,6 +95,13 @@ namespace Settings
 		float bodyHoldRight{ 17.5f };  // where the hand holds the item, seen from the eyes
 		float bodyHoldForward{ 22.2f };
 		float bodyHoldUp{ -35.0f };
+		// [QuickLoot] QuickLoot IE's "Take" from a container or body: the character searches it (the game's searching
+		// animation, 3rd person only), then the item is in the hand; put back = it stays in the container
+		bool  quickLoot{ false };
+		float searchTime{ 2.5f };       // seconds of the searching animation the first time, 0 = none
+		float searchAgainTime{ 0.5f };  // ... taking more from the container just searched: a quick reach in
+		bool  lootBodies{ true };       // also items taken from dead bodies (and corpse-like containers)
+		bool  bigChestsOnly{ false };   // only items from real chests (not barrels, sacks, urns, drawers, bodies...)
 		float raiseTime{ 0.45f };
 		float stowTime{ 0.6f };
 		float returnTime{ 0.5f };
@@ -103,10 +122,13 @@ namespace Settings
 	inline constexpr Range kMaxItemSize{ 2.0f, 60.0f };
 	inline constexpr Range kHoldHeight{ 0.0f, 25.0f };
 	inline constexpr Range kHandAngle{ -90.0f, 90.0f };
+	inline constexpr Range kGripSlide{ -15.0f, 15.0f };
+	inline constexpr Range kGripAngle{ -45.0f, 45.0f };
 	inline constexpr Range kItemOffset{ -25.0f, 25.0f };
 	inline constexpr Range kEffectSize{ 0.5f, 5.0f };
 	inline constexpr Range kTime{ 0.05f, 3.0f };
 	inline constexpr Range kWait{ 0.0f, 3.0f };
+	inline constexpr Range kSearchTime{ 0.0f, 5.0f };
 	inline constexpr Range kFadeTime{ 0.05f, 1.0f };
 	inline constexpr Range kCameraSide{ -90.0f, 90.0f };
 	inline constexpr Range kCameraBack{ 0.0f, 150.0f };

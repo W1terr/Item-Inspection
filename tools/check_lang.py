@@ -10,7 +10,7 @@ from pathlib import Path
 SRC = Path(__file__).resolve().parent.parent / "src"
 STRING = r'"(?:[^"\\]|\\.)*"'
 HELPERS = r"\b(?:T|Lang::T|Label|Header|Checkbox|Slider|KeyRow|Help)\((.*?)\);"
-NOT_TEXT = {"%.1f", "%.0f", "%.2f", "%.2f s", "%s", "store", "putback", "look", "switchview", "{}##{}", "{}_kb", "{}_pad", "[{}] {}", "[{}] {}    [{}] {}"}
+NOT_TEXT = {"%.1f", "%.0f", "%.2f", "%.2f s", "%s", "store", "putback", "look", "switchview", "inspect", "{}##{}", "{}_kb", "{}_pad", "[{}] {}", "[{}] {}    [{}] {}"}
 
 
 def literals(text):

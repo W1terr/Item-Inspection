@@ -2,16 +2,20 @@
 
 #include "ArmPose.h"
 #include "BodyArm.h"
+#include "ContainerLid.h"
 #include "Fade.h"
 #include "HUD.h"
 #include "Keys.h"
 #include "Lang.h"
 #include "MathUtil.h"
+#include "QuickLoot.h"
 #include "Seen.h"
 #include "Settings.h"
 #include "SmoothCam.h"
 #include "Telekinesis.h"
 #include "WorldPause.h"
+
+#include <atomic>
 
 namespace Inspect
 {
@@ -24,14 +28,14 @@ namespace Inspect
 		{
 			kIdle,
 			kWaitMenu,    // from the inventory: waiting for it to close
-			kWaitAnimation,  // 3rd person: another mod's pickup animation plays first (the item still lies there)
+			kWaitAnimation,  // 3rd person: another mod's pickup animation (or the search of a container) plays first
 			kFadeOut,     // from 3rd person: fading to black before the switch to 1st person
 			kWaitCamera,  // switching to 1st person
 			kRaise,       // hand brings the item up
 			kHold,        // looking at it, mouse turns it
 			kSwitchView,  // switching between 3rd and 1st person while holding (fade to black, switch, fade back)
 			kSettle,      // a floating item sinks onto the palm before it's put away / back
-			kStow,        // hand goes down and behind the back, item goes into the inventory
+			kStow,        // hand goes down and behind the back (3rd person: into a pocket at the hip), item goes into the inventory
 			kReturn,      // empty hand comes back to the normal pose
 			kPutBack,     // item goes back where it was, hand lowers
 			kFadeBack,    // back to 3rd person: fading to black before the switch
@@ -40,76 +44,38 @@ namespace Inspect
 
 		enum class Source
 		{
-			kWorld,     // taken from the world: picked up when it goes into the backpack
-			kInventory  // already ours, taken out of the inventory menu: the menu opens again at the end
+			kWorld,      // taken from the world: picked up when it goes into the backpack
+			kInventory,  // already ours, taken out of the inventory menu: the menu opens again at the end
+			kContainer,  // QuickLoot's take from a container or body: taken out of it when it goes into the backpack
+			kHarvest     // a plant's ingredient: the plant is harvested when it goes into the backpack
+		};
+
+		// a plant's Activate (TESFlora / TESObjectTREE), called when the harvest really happens
+		using ActivateFunc = bool(RE::TESBoundObject*, RE::TESObjectREFR*, RE::TESObjectREFR*, std::uint8_t, RE::TESBoundObject*, std::int32_t);
+
+		struct Harvest
+		{
+			RE::TESBoundObject* plant{ nullptr };
+			ActivateFunc*       activate{ nullptr };
+			std::uint8_t        arg3{ 0 };
+			RE::TESBoundObject* object{ nullptr };
+			std::int32_t        count{ 1 };
 		};
 
 		// wrist positions while putting the item away, eye space (right, forward, up): out of view, low and behind
 		const NiPoint3 kStowVia{ 16.0f, 12.0f, -28.0f };
 		const NiPoint3 kStowEnd{ 20.0f, -6.0f, -38.0f };
-		// Staying in 3rd person, where the hand can be seen: the hand puts the item over the right shoulder into the
-		// backpack and comes back down, like the vanilla bow sheath (bow_unequip.hkx: its left hand lays the bow on the
-		// back), mirrored to the right hand. Sampled every 0.05 s from 0.30 s (hand up in front) to the end, eye space
-		// (right, forward, up), with the elbow's direction (from the middle of shoulder and wrist), the fingers and the
-		// palm (scratch/stow_path.py).
-		struct StowKey
-		{
-			NiPoint3 wrist;
-			NiPoint3 pole;
-			NiPoint3 fingers;
-			NiPoint3 palm;
-		};
-		const std::array<StowKey, 21> kBodyStow{ {
-			{ { 33.4f, 33.0f, -21.6f }, { 0.97f, -0.17f, 0.17f }, { -0.06f, 0.78f, -0.63f }, { 0.86f, 0.36f, 0.37f } },  // 0.30 s
-			{ { 33.3f, 28.6f, -23.6f }, { 0.91f, -0.23f, 0.33f }, { -0.02f, 0.59f, -0.81f }, { 0.83f, 0.46f, 0.31f } },  // 0.35 s
-			{ { 30.5f, 21.8f, -31.5f }, { 0.88f, -0.15f, 0.45f }, { -0.23f, 0.18f, -0.96f }, { 0.87f, 0.47f, -0.12f } },  // 0.40 s
-			{ { 24.6f, 9.3f, -37.7f }, { 0.93f, 0.04f, 0.36f }, { -0.57f, -0.25f, -0.78f }, { 0.79f, 0.11f, -0.61f } },  // 0.45 s
-			{ { 19.7f, -2.0f, -36.8f }, { 0.98f, 0.08f, 0.17f }, { -0.75f, -0.33f, -0.58f }, { 0.66f, -0.35f, -0.66f } },  // 0.50 s
-			{ { 15.0f, -7.5f, -34.3f }, { 1.00f, 0.01f, -0.02f }, { -0.83f, -0.32f, -0.46f }, { 0.55f, -0.62f, -0.56f } },  // 0.55 s
-			{ { 13.2f, -9.6f, -31.5f }, { 0.99f, -0.07f, -0.13f }, { -0.84f, -0.35f, -0.40f }, { 0.51f, -0.78f, -0.37f } },  // 0.60 s
-			{ { 13.1f, -10.3f, -29.8f }, { 0.98f, -0.14f, -0.18f }, { -0.84f, -0.43f, -0.33f }, { 0.50f, -0.85f, -0.17f } },  // 0.65 s
-			{ { 13.2f, -11.4f, -29.3f }, { 0.96f, -0.19f, -0.22f }, { -0.81f, -0.52f, -0.28f }, { 0.55f, -0.83f, -0.05f } },  // 0.70 s
-			{ { 13.4f, -12.7f, -29.3f }, { 0.95f, -0.22f, -0.23f }, { -0.77f, -0.56f, -0.30f }, { 0.61f, -0.79f, -0.08f } },  // 0.75 s
-			{ { 14.0f, -13.8f, -29.1f }, { 0.96f, -0.21f, -0.21f }, { -0.72f, -0.55f, -0.42f }, { 0.65f, -0.74f, -0.15f } },  // 0.80 s
-			{ { 15.9f, -14.7f, -29.3f }, { 0.98f, -0.11f, -0.14f }, { -0.57f, -0.54f, -0.61f }, { 0.76f, -0.62f, -0.16f } },  // 0.85 s
-			{ { 19.1f, -15.5f, -29.8f }, { 1.00f, 0.03f, -0.03f }, { -0.33f, -0.51f, -0.79f }, { 0.89f, -0.45f, -0.08f } },  // 0.90 s
-			{ { 21.6f, -13.8f, -32.3f }, { 0.99f, 0.08f, 0.08f }, { -0.20f, -0.40f, -0.89f }, { 0.91f, -0.40f, -0.02f } },  // 0.95 s
-			{ { 25.1f, -7.0f, -36.7f }, { 0.96f, -0.15f, 0.23f }, { -0.25f, -0.16f, -0.95f }, { 0.81f, -0.57f, -0.12f } },  // 1.00 s
-			{ { 27.6f, 2.1f, -40.0f }, { 0.85f, -0.52f, 0.02f }, { -0.32f, 0.41f, -0.85f }, { 0.66f, -0.55f, -0.51f } },  // 1.05 s
-			{ { 29.2f, 3.5f, -44.0f }, { 0.68f, -0.69f, -0.23f }, { -0.11f, 0.67f, -0.73f }, { 0.60f, -0.54f, -0.59f } },  // 1.10 s
-			{ { 27.9f, 0.5f, -49.6f }, { 0.53f, -0.76f, -0.38f }, { 0.08f, 0.65f, -0.76f }, { 0.52f, -0.67f, -0.53f } },  // 1.15 s
-			{ { 24.9f, -2.9f, -53.9f }, { 0.48f, -0.73f, -0.48f }, { 0.14f, 0.46f, -0.88f }, { 0.20f, -0.88f, -0.43f } },  // 1.20 s
-			{ { 23.3f, -3.5f, -55.3f }, { 0.52f, -0.65f, -0.55f }, { 0.11f, 0.36f, -0.93f }, { -0.40f, -0.84f, -0.37f } },  // 1.25 s
-			{ { 21.4f, -2.8f, -56.1f }, { 0.51f, -0.63f, -0.58f }, { 0.05f, 0.37f, -0.93f }, { -0.53f, -0.78f, -0.33f } },  // 1.30 s
-		} };
-		constexpr float kBodyStowStep = 0.05f;
-		constexpr float kBodyStowBack = 0.45f;  // seconds into kBodyStow: behind the shoulder, where the stow ends
-		constexpr float kBodyStowBlend = 0.5f;  // part of the stow in which the hand goes over from its hold to the path
-		constexpr float kBodyStowWristBend = 1.2f;  // radians: the sheath bends the wrist further than holding does
-		constexpr float kBodyReturnFade = 0.4f;  // part of the return after which the arm goes back to its own animation
-		constexpr float kBodyStowLength = (kBodyStow.size() - 1) * kBodyStowStep;
-
-		// the sheath path at a time (seconds into kBodyStow): the wrist on a Catmull-Rom curve through the samples,
-		// the directions in between
-		StowKey BodyStowAt(float a_time)
-		{
-			const float       frame = std::clamp(a_time / kBodyStowStep, 0.0f, static_cast<float>(kBodyStow.size() - 1));
-			const std::size_t i = std::min(static_cast<std::size_t>(frame), kBodyStow.size() - 2);
-			const float       t = frame - static_cast<float>(i);
-			const auto&       p0 = kBodyStow[i > 0 ? i - 1 : 0];
-			const auto&       p1 = kBodyStow[i];
-			const auto&       p2 = kBodyStow[i + 1];
-			const auto&       p3 = kBodyStow[std::min(i + 2, kBodyStow.size() - 1)];
-			const float       t2 = t * t;
-			const float       t3 = t2 * t;
-			StowKey           key;
-			key.wrist = (p1.wrist * 2.0f + (p2.wrist - p0.wrist) * t + (p0.wrist * 2.0f - p1.wrist * 5.0f + p2.wrist * 4.0f - p3.wrist) * t2 +
-							(p1.wrist * 3.0f - p0.wrist - p2.wrist * 3.0f + p3.wrist) * t3) * 0.5f;
-			key.pole = Normalized(Lerp(p1.pole, p2.pole, t));
-			key.fingers = Normalized(Lerp(p1.fingers, p2.fingers, t));
-			key.palm = Normalized(Lerp(p1.palm, p2.palm, t));
-			return key;
-		}
+		// Staying in 3rd person, where the hand can be seen: the hand goes down to the right hip and slips the item into a
+		// pocket, fingers first, then hangs back into its own animation. Eye space (right, forward, up), scaled with the
+		// body; the pocket is about where the hanging hand is, so the arm stays natural all the way.
+		const NiPoint3 kPocketLift{ -2.0f, -3.0f, 25.0f };  // the curve first pulls the hand up from the hold (it rises about 8)
+		const NiPoint3 kPocketVia{ 22.0f, 12.0f, -46.0f };  // a little out to the side on the way down (past the thigh)
+		const NiPoint3 kPocket{ 20.0f, 2.0f, -56.0f };      // the wrist at the right hip, the arm almost straight (elbow ~160 deg)
+		const NiPoint3 kPocketFingers{ 0.05f, 0.1f, -1.0f };  // pointing down into the pocket, in line with the forearm
+		const NiPoint3 kPocketPalm{ -1.0f, 0.0f, 0.0f };     // towards the thigh
+		const NiPoint3 kPocketElbow{ 0.35f, -1.0f, 0.1f };   // the elbow goes back
+		constexpr float kPocketShrinkFrom = 0.65f;          // part of the stow from which the item slips in (gone at kStowPickUpAt)
+		constexpr std::array<float, 5> kPocketFist{ 0.9f, 1.15f, 1.2f, 1.25f, 1.3f };  // radians per joint, thumb first (ArmPose bends the thumb less)
 		// weapons (not bows) in 3rd person, as tuned in game: where the hand holds them next to other items (eye space,
 		// scaled with the body) and the blade's angles (degrees: tipped left, tipped away, turned around the blade)
 		const NiPoint3  kBodyWeaponOffset{ 0.0f, 1.4f, 0.0f };  // from the 3rd person hand position (fHand*)
@@ -151,6 +117,11 @@ namespace Inspect
 		constexpr float kIdleSettle = 0.35f;  // 3rd person: seconds the body blends back to standing before it holds still
 		constexpr float kStillFollow = 3.0f;  // 1/s: how fast the body's animation slows down / speeds up again
 		constexpr float kLateAnimationWait = 0.5f;  // Immersive Interactions picks up at the start of its animation, not halfway
+		constexpr float kSearchStandUp = 0.6f;      // seconds after the searching animation for getting up, before the camera moves
+		constexpr float kSearchTurn = 5.0f;         // 1/s: the player turns towards the container while searching
+		constexpr float kRiseFromScale = 0.5f;      // an item out of a container comes up from this part of its size
+		constexpr float kLootingStandUp = 0.2f;     // Dynamic Looting: seconds after its animation ended, before the camera moves
+		constexpr float kMaxLootingWait = 6.0f;     // ... never waiting longer for it than this
 		constexpr float kMouseSpeed = 0.006f;  // radians per mouse unit
 		constexpr float kStickSpeed = 3.0f;    // radians per second at full stick
 		constexpr float kWheelStep = 1.5f;     // units per wheel notch
@@ -168,12 +139,20 @@ namespace Inspect
 			float                         animationWait{ 0.0f };  // kWaitAnimation: seconds
 
 			// the pickup we hold back
-			RE::ObjectRefHandle           ref;
+			RE::ObjectRefHandle           ref;         // from a container: the container
 			RE::FormID                    baseID{ 0 };
 			std::int32_t                  count{ 1 };
 			bool                          arg3{ false };
 			bool                          playSound{ true };
 			bool                          pickedUp{ false };
+			ContainerItem                 take;           // from a container: what QuickLoot would have taken
+			Harvest                       harvest;        // from a plant (the ref): its harvest, done when the item is stowed
+			NiPoint3                      containerSpot;  // where the item comes out of the container / plant (and goes back in)
+			bool                          lootingAnimation{ false };  // Dynamic Looting's harvest animation plays first
+			bool                          riseFromHand{ false };      // ... after it the item comes up out of the right hand
+			bool                          searching{ false };  // the searching animation plays
+			float                         searchTime{ 0.0f };
+			float                         searchHeading{ 0.0f };  // facing the container
 
 			RE::NiPointer<RE::NiAVObject> worldModel;  // the reference's own 3D, hidden meanwhile
 			RE::NiPointer<RE::NiAVObject> item;        // our copy in the hand
@@ -208,6 +187,7 @@ namespace Inspect
 			bool                          bow{ false };  // bows and crossbows: their own hold settings (held further out)
 			bool                          gripSet{ false };
 			NiTransform                   grip;
+			NiTransform                   weaponNode;  // the WEAPON node (hand space, item scale): the grip before the fist fit
 			NiPoint3                      bladeAxis;   // hand space
 			bool                          stringBow{ false };  // bows (not crossbows): held up with the string towards the eye
 			NiPoint3                      stringAxis;          // hand space: from the riser to the bowstring
@@ -331,6 +311,84 @@ namespace Inspect
 			});
 		}
 
+		// ---- a plant's harvest, done when the item goes into the backpack ----
+
+		bool Harvested(const RE::TESObjectREFR* a_plant)
+		{
+			return (a_plant->formFlags & RE::TESObjectREFR::RecordFlags::kHarvested) != 0;
+		}
+
+		// the plant's own Activate (ours is skipped): the ingredient (a leveled list rolls now), its sound and message,
+		// the stealing, the harvested look
+		void HarvestNow(RE::ObjectRefHandle a_plant, const Harvest& a_harvest)
+		{
+			SKSE::GetTaskInterface()->AddTask([a_plant, a_harvest]() {
+				const auto player = Player();
+				const auto ref = a_plant.get();
+				if (player && ref && a_harvest.activate && !ref->IsDisabled() && !Harvested(ref.get())) {
+					a_harvest.activate(a_harvest.plant, ref.get(), player, a_harvest.arg3, a_harvest.object, a_harvest.count);
+				}
+			});
+		}
+
+		// ---- QuickLoot's take, done when the item goes into the backpack ----
+
+		bool HasExtraList(RE::TESObjectREFR* a_container, RE::TESBoundObject* a_object, RE::ExtraDataList* a_extraList)
+		{
+			const auto changes = a_extraList ? a_container->GetInventoryChanges() : nullptr;
+			if (!changes || !changes->entryList) {
+				return false;
+			}
+			for (const auto entry : *changes->entryList) {
+				if (entry && entry->object == a_object && entry->extraLists) {
+					for (const auto list : *entry->extraLists) {
+						if (list == a_extraList) {
+							return true;
+						}
+					}
+				}
+			}
+			return false;
+		}
+
+		// the way QuickLoot takes a stack: the "added" event for quests and stats, the sound, the move into the
+		// player's inventory, the alarm when stealing
+		void GiveContainerItem(const ContainerItem& a_item)
+		{
+			const auto player = Player();
+			const auto container = a_item.container.get();
+			if (!player || !container || !a_item.object) {
+				logs::warn("The container is gone: nothing taken");
+				return;
+			}
+			const auto inventory = container->GetInventory([&](RE::TESBoundObject& a_object) { return &a_object == a_item.object; });
+			const auto found = inventory.find(a_item.object);
+			const std::int32_t count = found != inventory.end() ? std::min(a_item.count, found->second.first) : 0;
+			if (count <= 0) {
+				logs::warn("{:08X} isn't in the container any more: nothing taken", a_item.object->GetFormID());
+				return;
+			}
+			// the stack's own list (enchantment, temper...) if the container still has it
+			const auto extraList = HasExtraList(container.get(), a_item.object, a_item.extraList) ? a_item.extraList : nullptr;
+			const auto owner = container->GetOwner();
+			const auto actor = container->As<RE::Actor>();
+			const auto type = a_item.stealing              ? RE::AQUIRE_TYPE::kSteal :
+			                  actor && actor->IsDead(false) ? RE::AQUIRE_TYPE::kDeadBody :
+			                                                  RE::AQUIRE_TYPE::kContainer;
+			player->AddPlayerAddItemEvent(a_item.object, owner, container.get(), type);
+			player->PlayPickUpSound(a_item.object, true, false);
+			container->RemoveItem(a_item.object, count, a_item.stealing ? RE::ITEM_REMOVE_REASON::kSteal : RE::ITEM_REMOVE_REASON::kStoreInContainer,
+				extraList, player);
+			a_item.object->HandleRemoveItemFromContainer(container.get());
+			if (actor && a_item.object->IsAmmo()) {
+				actor->ClearExtraArrows();
+			}
+			if (a_item.stealing) {
+				player->StealAlarm(container.get(), a_item.object, count, a_item.value, owner, true);
+			}
+			logs::info("Took {:08X} x{} out of {:08X}{}", a_item.object->GetFormID(), count, container->GetFormID(), a_item.stealing ? " (stolen)" : "");
+		}
+
 		// ---- hint ----
 
 		void ShowHint()
@@ -344,7 +402,7 @@ namespace Inspect
 			const auto store = Keys::Name(gamepad ? settings.storeGamepadKey : settings.storeKey);
 			const auto putBack = Keys::Name(gamepad ? settings.putBackGamepadKey : settings.putBackKey);
 			std::string text = state.name.empty() ? "" : state.name + "    ";
-			text += state.source == Source::kWorld ? std::format("[{}] {}    [{}] {}", store, Lang::T("Put in backpack"), putBack, Lang::T("Put back")) :
+			text += state.source != Source::kInventory ? std::format("[{}] {}    [{}] {}", store, Lang::T("Put in backpack"), putBack, Lang::T("Put back")) :
 			                                         std::format("[{}] {}", store, Lang::T("Put in backpack"));
 			const auto switchView = Keys::Name(gamepad ? settings.switchViewGamepadKey : settings.switchViewKey);
 			text += std::format("    [{}] {}", switchView, Lang::T("Switch view"));
@@ -437,6 +495,32 @@ namespace Inspect
 			return true;
 		}
 
+		// weapons are held by the grip; bows and crossbows have their own hold, bows like an archer
+		void SetWeaponKind(const RE::TESForm* a_object)
+		{
+			state.weapon = a_object->IsWeapon();
+			if (const auto weapon = a_object->As<RE::TESObjectWEAP>()) {
+				state.bow = weapon->IsBow() || weapon->IsCrossbow();
+				state.stringBow = weapon->IsBow();
+			}
+		}
+
+		std::string ItemName(const RE::TESForm* a_object)
+		{
+			const auto named = a_object ? a_object->As<RE::TESFullName>() : nullptr;
+			return named && named->GetFullName() ? named->GetFullName() : "";
+		}
+
+		// the item turned and scaled, with its middle (the model's bound center) at a point
+		NiTransform ItemAt(const NiPoint3& a_middle, const NiMatrix3& a_rotate, float a_scale)
+		{
+			NiTransform world;
+			world.rotate = a_rotate;
+			world.scale = a_scale;
+			world.translate = a_middle - a_rotate * (state.center * a_scale);
+			return world;
+		}
+
 		RE::NiNode* FirstPersonRoot()
 		{
 			const auto player = Player();
@@ -497,6 +581,9 @@ namespace Inspect
 
 		void Finish()
 		{
+			if (state.searching) {
+				Player()->NotifyAnimationGraph("IdleForceDefaultState");  // cut short: up from the search
+			}
 			StopLooking(true);
 			WorldPause::End();
 			Telekinesis::Stop();
@@ -516,9 +603,15 @@ namespace Inspect
 			}
 			Fade::To(0.0f, Settings::Get().fadeTime * 1.5f);  // after a fade to black: show the world again
 			const bool reopen = state.source == Source::kInventory && state.phase != Phase::kWaitMenu;
+			const bool container = state.source == Source::kContainer;
+			const auto lid = state.ref;
 			state = {};
 			if (reopen) {
 				ShowInventory(true);
+			}
+			if (container) {
+				ContainerLid::Release(lid);  // already closed when the item went in / out, unless it ended early
+				QuickLoot::Pause(false);  // its menu comes back, without the item if it was taken
 			}
 		}
 
@@ -544,6 +637,17 @@ namespace Inspect
 			return !a_player->IsDead() && !a_player->IsOnMount() && !a_player->IsInKillMove() && !actorState->IsSwimming() &&
 			       actorState->GetSitSleepState() == RE::SIT_SLEEP_STATE::kNormal && actorState->GetKnockState() == RE::KNOCK_STATE_ENUM::kNormal &&
 			       a_player->Get3D(true);
+		}
+
+		// "Hold a key to inspect": whether the key is held now, and whether it was held when Activate was last pressed.
+		// Pickups and harvests can come a second after the press (Immersive Interactions / Dynamic Looting play their
+		// animation first), so the press decides; the key held right now also counts (QuickLoot on another key).
+		std::atomic<bool> inspectKeyHeld{ false };
+		std::atomic<bool> activatedWithKey{ false };
+
+		bool InspectKeyAllows()
+		{
+			return !Settings::Get().holdKeyToInspect || inspectKeyHeld || activatedWithKey;
 		}
 
 		// the kinds of items that go to the hand (the settings can send some straight to the inventory)
@@ -573,7 +677,7 @@ namespace Inspect
 		bool CanInspect(RE::PlayerCharacter* a_player, RE::TESObjectREFR* a_ref)
 		{
 			const auto& settings = Settings::Get();
-			if (!settings.enabled || Active() || !a_ref || a_ref->IsDisabled() || a_ref->IsMarkedForDeletion() || !a_ref->Get3D()) {
+			if (!settings.enabled || Active() || !InspectKeyAllows() || !a_ref || a_ref->IsDisabled() || a_ref->IsMarkedForDeletion() || !a_ref->Get3D()) {
 				return false;
 			}
 			const auto base = a_ref->GetBaseObject();
@@ -974,17 +1078,35 @@ namespace Inspect
 			return wait + (wellTimed && wellTimed->value == 0.0f ? kLateAnimationWait : 0.0f);
 		}
 
+		// Dynamic Looting and Harvesting Animations (LootingAnimations.esp) plays a harvest animation in 3rd person (from
+		// a perk entry's script) and harvests the plant about a second in, while its item is shown in the right hand. Its
+		// global LA_AnimTrigger (which picks the animation in its OAR conditions) stays set until the animation is over.
+		RE::TESGlobal* LootingAnimationTrigger()
+		{
+			static RE::TESGlobal* const trigger = [] {
+				const auto handler = RE::TESDataHandler::GetSingleton();
+				const auto found = handler ? handler->LookupForm<RE::TESGlobal>(0x801, "LootingAnimations.esp") : nullptr;
+				if (found) {
+					logs::info("Dynamic Looting and Harvesting Animations is loaded: harvests wait for its animation");
+				}
+				return found;
+			}();
+			return trigger;
+		}
+
+		bool LootingAnimationPlays()
+		{
+			const auto trigger = LootingAnimationTrigger();
+			return trigger && trigger->value != 0.0f;
+		}
+
 		bool Begin(RE::PlayerCharacter* a_player, RE::TESObjectREFR* a_ref, std::int32_t a_count, bool a_arg3, bool a_playSound)
 		{
 			if (!CanInspect(a_player, a_ref)) {
 				return false;
 			}
 			const auto model = a_ref->Get3D();
-			state.weapon = a_ref->GetBaseObject()->IsWeapon();
-			if (const auto weapon = a_ref->GetBaseObject()->As<RE::TESObjectWEAP>()) {
-				state.bow = weapon->IsBow() || weapon->IsCrossbow();
-				state.stringBow = weapon->IsBow();
-			}
+			SetWeaponKind(a_ref->GetBaseObject());
 			if (!MakeItem(model, true, !state.weapon)) {
 				logs::warn("Couldn't copy the model of {:08X}, normal pickup", a_ref->GetFormID());
 				state = {};
@@ -1104,8 +1226,7 @@ namespace Inspect
 			}
 			state.source = Source::kInventory;
 			state.baseID = selected ? selected->GetFormID() : 0;
-			const auto named = selected ? selected->As<RE::TESFullName>() : nullptr;
-			state.name = named && named->GetFullName() ? named->GetFullName() : "";
+			state.name = ItemName(selected);
 			// the inventory camera looks along +Y with +Z up: keep the turn the preview had (a model we loaded starts upright)
 			state.rotation = preview ? model->world.rotate : NiMatrix3{};
 			SetPhase(Phase::kWaitMenu);
@@ -1114,6 +1235,285 @@ namespace Inspect
 				preview ? "preview" : "loaded", state.radius, state.scale);
 			return true;
 		}
+
+		// ---- QuickLoot: from a container ----
+
+		std::atomic<bool> containerPending{ false };  // QuickLoot handed us an item, the inspection starts with the next task
+		// the container searched last (native handle): taking more from it only reaches in quickly. Forgotten when
+		// QuickLoot shows another container and on game load.
+		std::atomic<std::uint32_t> searchedContainer{ 0 };
+
+		// the container's model file, lower case ("" without one)
+		std::string ContainerModel(const RE::TESObjectREFR* a_container)
+		{
+			const auto base = a_container->GetBaseObject();
+			const auto model = base ? base->As<RE::TESModel>() : nullptr;
+			std::string path = model && model->GetModel() ? model->GetModel() : "";
+			std::ranges::transform(path, path.begin(), [](char a_c) { return static_cast<char>(std::tolower(static_cast<unsigned char>(a_c))); });
+			return path;
+		}
+
+		// a dead NPC or creature, or a container that looks like one (burnt corpses, draugr ambush bodies...)
+		bool IsBody(const RE::TESObjectREFR* a_container)
+		{
+			if (a_container->As<RE::Actor>()) {
+				return true;
+			}
+			const auto model = ContainerModel(a_container);
+			return model.contains("corpse") || model.contains("bodies\\") || model.contains("dead");
+		}
+
+		// A real chest, not a barrel, sack, urn, strongbox, chest of drawers or wardrobe: by its model (vanilla chests
+		// are chest01, upperchest01, noblechest01, dwechest01, ruins_largechest / smallchest, the Dwemer and Falmer
+		// containers), at least kBigChestWidth wide (small modded jewelry chests stay normal)
+		constexpr float kBigChestWidth = 80.0f;
+
+		bool IsBigChest(const RE::TESObjectREFR* a_container)
+		{
+			if (a_container->As<RE::Actor>()) {
+				return false;
+			}
+			const auto model = ContainerModel(a_container);
+			const bool chest = (model.contains("chest") && !model.contains("drawer")) || model.contains("trunk") ||
+			                   model.contains("dwecontainer01") || model.contains("falmercontainer");
+			if (!chest) {
+				return false;
+			}
+			const auto base = a_container->GetBaseObject();
+			const auto& bound = base->boundData;
+			const float width = static_cast<float>(std::max(bound.boundMax.x - bound.boundMin.x, bound.boundMax.y - bound.boundMin.y));
+			return width == 0.0f || width * a_container->GetScale() >= kBigChestWidth;  // no bounds set: the model's name decides
+		}
+
+		// CanInspect for an item still in a container (QuickLoot's menu is open, which MenuOpen counts)
+		bool CanInspectContainerItem(const ContainerItem& a_item)
+		{
+			const auto& settings = Settings::Get();
+			const auto  player = Player();
+			const auto  ui = RE::UI::GetSingleton();
+			if (!settings.enabled || !settings.quickLoot || Active() || containerPending || !InspectKeyAllows() || !player || !ui || ui->GameIsPaused() ||
+				!a_item.object || !KindInspected(a_item.object)) {
+				return false;
+			}
+			if (!settings.alwaysInspect && Seen::Contains(a_item.object->GetFormID())) {
+				return false;
+			}
+			if (!settings.inspectStolen && a_item.stealing) {
+				return false;
+			}
+			const auto container = a_item.container.get();
+			if (!container || (settings.bigChestsOnly ? !IsBigChest(container.get()) : !settings.lootBodies && IsBody(container.get()))) {
+				return false;  // the settings leave this kind of container to QuickLoot
+			}
+			return PlayerFree(player) && !(settings.skipInCombat && player->IsInCombat());
+		}
+
+		// where the item comes out of the container: a body's chest, else the middle of the container's model
+		NiPoint3 ContainerSpot(RE::TESObjectREFR* a_container)
+		{
+			if (const auto actor = a_container->As<RE::Actor>(); actor && actor->Get3D(false)) {
+				const auto root = actor->Get3D(false);
+				const auto spine = root->GetObjectByName("NPC Spine2 [Spn2]");
+				return spine ? spine->world.translate : root->worldBound.center;
+			}
+			if (const auto model = a_container->Get3D()) {
+				return model->worldBound.center;
+			}
+			return a_container->GetPosition() + NiPoint3{ 0.0f, 0.0f, 30.0f };
+		}
+
+		// The game's own searching animation first: crouched, rummaging in front of the knees (searchingchest.hkx; it
+		// loops, it's stopped after the set time). Only in 3rd person: the 1st person view doesn't show it.
+		bool StartSearching(RE::PlayerCharacter* a_player, RE::ObjectRefHandle a_container)
+		{
+			const bool  again = a_container.native_handle() == searchedContainer.load();
+			const auto& settings = Settings::Get();
+			const float time = again ? settings.searchAgainTime : settings.searchTime;
+			searchedContainer = a_container.native_handle();
+			if (time <= 0.0f || FirstPerson() || a_player->IsSneaking() || a_player->AsActorState()->IsWeaponDrawn()) {
+				return false;
+			}
+			const char* idle = "IdleSearchingChest";
+			if (!a_player->NotifyAnimationGraph(idle)) {
+				logs::info("The searching animation {} didn't start", idle);
+				return false;
+			}
+			state.searching = true;
+			state.searchTime = time;
+			state.animationWait = time + kSearchStandUp;
+			const NiPoint3 to = state.containerSpot - a_player->GetPosition();
+			state.searchHeading = std::atan2(to.x, to.y);
+			logs::info("Searching the container{} ({:.2f} s)", again ? " again" : "", time);
+			return true;
+		}
+
+		// while searching the player turns to face the container
+		void TurnToContainer(RE::PlayerCharacter* a_player, float a_delta)
+		{
+			const float heading = a_player->GetAngleZ();
+			const float turn = std::remainder(state.searchHeading - heading, 2.0f * 3.14159265f) * std::min(1.0f, a_delta * kSearchTurn);
+			if (std::abs(turn) > 1e-4f) {
+				a_player->SetHeading(heading + turn);
+			}
+		}
+
+		bool BeginFromContainer(const ContainerItem& a_item)
+		{
+			const auto player = Player();
+			const auto container = a_item.container.get();
+			if (!player || !container || Active() || !PlayerFree(player)) {
+				return false;
+			}
+			const auto object = a_item.object;
+			SetWeaponKind(object);
+			const auto model = LoadModel(object);
+			if (!model || !MakeItem(model.get(), true, !state.weapon)) {
+				logs::warn("No model for {:08X} from the container, taken as usual", object->GetFormID());
+				state = {};
+				return false;
+			}
+			state.source = Source::kContainer;
+			state.ref = a_item.container;
+			state.take = a_item;
+			state.baseID = object->GetFormID();
+			state.count = a_item.count;
+			state.name = ItemName(object);
+			state.containerSpot = ContainerSpot(container.get());
+			ContainerLid::KeepOpen(container.get());  // QuickLoot opened it and would close it with its menu now
+			QuickLoot::Pause(true);  // its menu would stay on screen and take the keys
+			logs::info("Inspecting {} ({:08X}, x{}) from container {:08X}{}, size {:.1f}, scale {:.2f}", state.name, state.baseID, state.count,
+				container->GetFormID(), a_item.stealing ? " (stealing)" : "", state.radius, state.scale);
+			if (StartSearching(player, a_item.container)) {
+				DisableControls();  // the player stays where they are meanwhile
+				SetPhase(Phase::kWaitAnimation);
+				return true;
+			}
+			TakeControl();
+			return true;
+		}
+
+		// ---- harvesting a plant ----
+
+		std::atomic<bool> harvestPending{ false };  // a harvest was held back, the inspection starts with the next task
+
+		// what harvesting gives, to show: a leveled list's first item (the real harvest rolls its own)
+		RE::TESBoundObject* ShownProduce(RE::TESBoundObject* a_produce, int a_depth = 0)
+		{
+			const auto list = a_produce ? a_produce->As<RE::TESLevItem>() : nullptr;
+			if (!list) {
+				return a_produce;
+			}
+			if (a_depth < 4) {
+				for (const auto& entry : list->entries) {
+					const auto form = entry.form ? entry.form->As<RE::TESBoundObject>() : nullptr;
+					if (const auto found = ShownProduce(form, a_depth + 1)) {
+						return found;
+					}
+				}
+			}
+			return nullptr;
+		}
+
+		// CanInspect for a plant's ingredient, before the harvest
+		bool CanInspectHarvest(RE::PlayerCharacter* a_player, RE::TESObjectREFR* a_plant, RE::TESBoundObject* a_produce)
+		{
+			const auto& settings = Settings::Get();
+			if (!settings.enabled || settings.skipHarvest || Active() || harvestPending || !InspectKeyAllows() || !a_produce || !KindInspected(a_produce) ||
+				a_plant->IsDisabled() || Harvested(a_plant) || !a_plant->Get3D()) {
+				return false;
+			}
+			if (!settings.alwaysInspect && Seen::Contains(a_produce->GetFormID())) {
+				return false;
+			}
+			if (!settings.inspectStolen && a_plant->IsCrimeToActivate()) {
+				return false;  // somebody's crops: normal harvest
+			}
+			return PlayerFree(a_player) && !(settings.skipInCombat && a_player->IsInCombat()) && !MenuOpen();
+		}
+
+		// the middle of the plant's model: where its ingredient comes from
+		NiPoint3 PlantSpot(RE::TESObjectREFR* a_plant)
+		{
+			const auto model = a_plant->Get3D();
+			return model ? model->worldBound.center : a_plant->GetPosition() + NiPoint3{ 0.0f, 0.0f, 20.0f };
+		}
+
+		bool BeginHarvest(RE::ObjectRefHandle a_plant, const Harvest& a_harvest, RE::TESBoundObject* a_produce)
+		{
+			const auto player = Player();
+			const auto plant = a_plant.get();
+			if (!player || !plant || Active() || !CanInspectHarvest(player, plant.get(), a_produce)) {
+				return false;
+			}
+			const auto model = LoadModel(a_produce);
+			if (!model || !MakeItem(model.get(), true)) {
+				logs::warn("No model for {:08X} from plant {:08X}, harvested as usual", a_produce->GetFormID(), plant->GetFormID());
+				state = {};
+				return false;
+			}
+			state.source = Source::kHarvest;
+			state.ref = a_plant;
+			state.harvest = a_harvest;
+			state.baseID = a_produce->GetFormID();
+			state.count = a_harvest.count;
+			state.name = ItemName(a_produce);
+			state.containerSpot = PlantSpot(plant.get());
+			logs::info("Inspecting {} ({:08X}) from plant {:08X}, size {:.1f}, scale {:.2f}", state.name, state.baseID, plant->GetFormID(), state.radius,
+				state.scale);
+			state.lootingAnimation = LootingAnimationPlays();
+			state.animationWait = state.lootingAnimation ? kLootingStandUp : PickupAnimationWait();
+			if (state.animationWait > 0.0f) {
+				// the other mod's harvest animation plays out first (it shows the item in the hand meanwhile)
+				DisableControls();
+				SetPhase(Phase::kWaitAnimation);
+				return true;
+			}
+			TakeControl();
+			return true;
+		}
+
+		// A plant was activated: unless the item goes straight into the inventory, the harvest waits for the inspection.
+		// Can come from a script (Dynamic Looting harvests from its perk's script), so the inspection starts in a task.
+		bool OfferHarvest(RE::TESBoundObject* a_plant, RE::TESBoundObject* a_produce, RE::TESObjectREFR* a_ref, RE::TESObjectREFR* a_activator,
+			const Harvest& a_harvest)
+		{
+			const auto player = Player();
+			const auto shown = ShownProduce(a_produce);
+			if (!a_ref || !player || a_activator != player || !CanInspectHarvest(player, a_ref, shown)) {
+				return false;
+			}
+			harvestPending = true;
+			SKSE::GetTaskInterface()->AddTask([handle = a_ref->GetHandle(), a_harvest, shown]() {
+				harvestPending = false;
+				if (!BeginHarvest(handle, a_harvest, shown)) {
+					HarvestNow(handle, a_harvest);  // harvested the normal way after all
+				}
+			});
+			logs::debug("Held back the harvest of {:08X} ({:08X})", a_ref->GetFormID(), a_plant->GetFormID());
+			return true;
+		}
+
+		// TESFlora / TESObjectTREE::Activate: harvesting (both carry the ingredient as TESProduceForm)
+		template <class T>
+		struct HarvestActivate
+		{
+			static bool thunk(RE::TESBoundObject* a_this, RE::TESObjectREFR* a_ref, RE::TESObjectREFR* a_activator, std::uint8_t a_arg3,
+				RE::TESBoundObject* a_object, std::int32_t a_count)
+			{
+				const auto produce = static_cast<RE::TESProduceForm*>(static_cast<T*>(a_this))->produceItem;
+				const Harvest harvest{ .plant = a_this, .activate = Original, .arg3 = a_arg3, .object = a_object, .count = a_count };
+				if (produce && OfferHarvest(a_this, produce, a_ref, a_activator, harvest)) {
+					return true;  // harvested later, when the item goes into the backpack
+				}
+				return func(a_this, a_ref, a_activator, a_arg3, a_object, a_count);
+			}
+			static bool Original(RE::TESBoundObject* a_this, RE::TESObjectREFR* a_ref, RE::TESObjectREFR* a_activator, std::uint8_t a_arg3,
+				RE::TESBoundObject* a_object, std::int32_t a_count)
+			{
+				return func(a_this, a_ref, a_activator, a_arg3, a_object, a_count);
+			}
+			static inline REL::Relocation<decltype(thunk)> func;
+		};
 
 		void PickUpObject::thunk(RE::PlayerCharacter* a_this, RE::TESObjectREFR* a_object, std::int32_t a_count, bool a_arg3, bool a_playSound)
 		{
@@ -1201,7 +1601,9 @@ namespace Inspect
 		void UpdateFingers(float a_delta)
 		{
 			std::array<float, 5> target{};
-			if (state.settled || state.phase == Phase::kSettle) {
+			if (state.thirdPerson && !state.weapon && (state.phase == Phase::kStow || state.phase == Phase::kReturn)) {
+				target = kPocketFist;  // the hand closes around the item on its way to the pocket (and opens with the arm's animation)
+			} else if (state.settled || state.phase == Phase::kSettle) {
 				target.fill(kCupCurl);  // closing around the item that comes down onto the palm
 			} else if (state.telekinesis) {
 				// A wave running over the fingers (thumb to little finger or back, with the turn direction); per joint, so
@@ -1249,6 +1651,8 @@ namespace Inspect
 			}
 		}
 
+		float ItemSize();
+
 		void ClearInput()
 		{
 			state.mouseX = state.mouseY = state.wheel = 0.0f;
@@ -1257,6 +1661,7 @@ namespace Inspect
 		void OnPlayerUpdate(float a_delta)
 		{
 			Telekinesis::Update(a_delta);
+			ContainerLid::Update(a_delta);
 			Fade::Update(a_delta);
 			if (!Active()) {
 				return;
@@ -1264,6 +1669,8 @@ namespace Inspect
 			const auto& settings = Settings::Get();
 			const auto  player = Player();
 			const bool  world = state.source == Source::kWorld;
+			const bool  container = state.source == Source::kContainer;
+			const bool  harvest = state.source == Source::kHarvest;
 			const auto  ref = state.ref.get();
 			state.time += a_delta;
 			state.clock += a_delta;
@@ -1271,7 +1678,7 @@ namespace Inspect
 				HUD::KeepHoldMode();
 			}
 
-			if (!player || player->IsDead() || (world && !state.pickedUp && !ref)) {
+			if (!player || player->IsDead() || (state.source != Source::kInventory && !state.pickedUp && !ref)) {
 				logs::info("Inspection ended: {}", player && !player->IsDead() ? "the item is gone" : "the player died");
 				Finish();
 				return;
@@ -1297,7 +1704,19 @@ namespace Inspect
 				}
 				break;
 			case Phase::kWaitAnimation:
+				if (state.searching) {
+					TurnToContainer(player, a_delta);
+					if (state.time >= state.searchTime) {
+						player->NotifyAnimationGraph("IdleForceDefaultState");  // up again before the camera moves in
+						state.searching = false;
+					}
+				}
+				if (state.lootingAnimation && state.time < kMaxLootingWait && LootingAnimationPlays()) {
+					state.animationWait = state.time + kLootingStandUp;  // until a moment after Dynamic Looting's animation
+				}
 				if (state.time >= state.animationWait) {
+					// in 3rd person that mod showed the item in the right hand: it comes up from there
+					state.riseFromHand = state.lootingAnimation && !FirstPerson();
 					if (state.worldModel) {
 						state.worldModel->SetAppCulled(true);
 					}
@@ -1319,6 +1738,15 @@ namespace Inspect
 						const auto frames = state.thirdPerson ? ThirdPersonFrames() : std::nullopt;
 						const auto frame = frames ? frames->view : MakeCameraFrame(state.start.translate, player->data.angle.x, player->data.angle.z);
 						state.rotation = frame.basis.Transpose() * state.start.rotate;
+					} else if (container || harvest) {
+						// it comes up out of the container / plant, already turned the way it's held (upright) and growing;
+						// after Dynamic Looting's animation out of the 3rd person hand, at its size there
+						const auto frames = state.thirdPerson ? ThirdPersonFrames() : std::nullopt;
+						const auto frame = frames ? frames->view : MakeCameraFrame(state.containerSpot, player->data.angle.x, player->data.angle.z);
+						const auto body = state.riseFromHand && state.thirdPerson ? BodyRoot() : nullptr;
+						const auto hand = body ? body->GetObjectByName("NPC R Hand [RHnd]") : nullptr;
+					state.start = ItemAt(hand ? hand->world.translate : state.containerSpot, frame.basis * state.rotation,
+							state.scale * (hand ? ItemSize() : kRiseFromScale));
 					}
 					HideWeapon();
 					if (!state.thirdPerson) {
@@ -1339,6 +1767,10 @@ namespace Inspect
 					Finish();
 					if (pick.source == Source::kWorld) {
 						PickUpNow(pick.ref, pick.count, pick.arg3, pick.playSound, nullptr);
+					} else if (pick.source == Source::kContainer) {
+						GiveContainerItem(pick.take);  // QuickLoot left it to us
+					} else if (pick.source == Source::kHarvest) {
+						HarvestNow(pick.ref, pick.harvest);
 					}
 				}
 				break;
@@ -1358,9 +1790,13 @@ namespace Inspect
 				state.switchRequested = false;
 				if (state.storeRequested || state.putBackRequested) {
 					// an inventory item has nowhere else to go than the backpack
-					const Phase next = state.storeRequested || !world ? Phase::kStow : Phase::kPutBack;
+					const Phase next = state.storeRequested || state.source == Source::kInventory ? Phase::kStow : Phase::kPutBack;
 					StopLooking(false);
 					state.inHandSet = false;
+					if (next == Phase::kPutBack && harvest) {
+						// back into the plant (also when it came out of the hand), shrinking like it came
+						state.start = ItemAt(state.containerSpot, state.last.rotate, state.scale * kRiseFromScale);
+					}
 					if (state.weapon || next == Phase::kPutBack) {
 						// a weapon is already in the hand; put back, the item floats straight back down (telekinesis
 						// keeps it until it lies there)
@@ -1399,8 +1835,15 @@ namespace Inspect
 						state.worldModel.reset();
 						PickUpNow(state.ref, state.count, state.arg3, state.playSound, hidden);
 						Seen::Add(state.baseID);
+					} else if (container) {
+						GiveContainerItem(state.take);
+						ContainerLid::Release(state.ref);
+						Seen::Add(state.baseID);
+					} else if (harvest) {
+						HarvestNow(state.ref, state.harvest);
+						Seen::Add(state.baseID);
 					}
-					// from the player's body, not the 1st person hand: the hand is on its way behind the back and the camera
+					// from the player's body, not the 1st person hand: the hand is on its way out of view and the camera
 					// goes back to 3rd person right after, and a sound following the hand jumped with it (broken sound)
 					PlayTelekinesisSound(player->Get3D(false));
 					logs::info("Put in the backpack");
@@ -1425,6 +1868,9 @@ namespace Inspect
 					const auto landed = state.ref.get();
 					PlayTelekinesisSound(landed && landed->Get3D() ? landed->Get3D() : player->Get3D(false));  // where it lands
 					logs::info("Put back");
+					if (container) {
+						ContainerLid::Release(state.ref);  // it's back inside
+					}
 					End();
 				}
 				break;
@@ -1469,6 +1915,30 @@ namespace Inspect
 		constexpr float kFistTilt = 18.0f;                    // degrees around -Y: the index finger's end towards the fingers
 		constexpr float kFistTurn = -4.0f;                    // degrees around +Z: the index finger's end towards the palm
 
+		// the blade's direction in the model (from the grip towards the model's middle)
+		NiPoint3 BladeInModel() { return state.center.Length() > 1.0f ? state.center : NiPoint3{ 0.0f, 1.0f, 0.0f }; }
+
+		// The fist around the WEAPON node's handle (as tuned), then the player's own fit from the settings (models whose
+		// grip isn't where the game expects it, e.g. held at the crossguard): tilted in the fist, turned around the blade,
+		// slid along it. Every frame, so the menu's sliders show right away.
+		void ApplyFist()
+		{
+			const auto& settings = Settings::Get();
+			const float slide = state.thirdPerson ? settings.bodyGripSlide : settings.gripSlide;
+			const float turn = state.thirdPerson ? settings.bodyGripTurn : settings.gripTurn;
+			const float tilt = state.thirdPerson ? settings.bodyGripTilt : settings.gripTilt;
+			state.grip = state.weaponNode;
+			state.grip.translate += state.thirdPerson ? kBodyFistOffset : kFistOffset;
+			state.grip.rotate = AxisAngle({ 0.0f, 0.0f, 1.0f }, kFistTurn * kDegrees) * AxisAngle({ 0.0f, -1.0f, 0.0f }, (kFistTilt + tilt) * kDegrees) *
+			                    state.grip.rotate;
+			const NiPoint3 blade = Normalized(state.grip.rotate * BladeInModel());
+			// around the handle's point in the fist (the model origin), so the handle stays in the hand
+			state.grip.rotate = AxisAngle(blade, turn * kDegrees) * state.grip.rotate;
+			// + = the weapon moves towards its tip: the hand ends up nearer the pommel
+			state.grip.translate += blade * slide;
+			state.bladeAxis = blade;
+		}
+
 		// Weapons: where the game puts held weapons (the WEAPON node at the grip), the hand a fist around it. The blade
 		// direction (grip towards the model's middle) is what the hand turns around.
 		void SetWeaponGrip(const ArmPose::HandFrame& a_hand)
@@ -1478,15 +1948,13 @@ namespace Inspect
 				state.weapon = false;  // no WEAPON node: hold it like other items
 				return;
 			}
-			state.grip = *a_hand.weaponGrip;
-			state.grip.scale *= state.scale;
+			state.weaponNode = *a_hand.weaponGrip;
+			state.weaponNode.scale *= state.scale;
+			state.grip = state.weaponNode;
 			if (!state.stringBow) {
-				state.grip.translate += state.thirdPerson ? kBodyFistOffset : kFistOffset;
-				state.grip.rotate = AxisAngle({ 0.0f, 0.0f, 1.0f }, kFistTurn * kDegrees) * AxisAngle({ 0.0f, -1.0f, 0.0f }, kFistTilt * kDegrees) *
-				                    state.grip.rotate;
+				ApplyFist();
 			}
-			const NiPoint3 bladeModel = state.center.Length() > 1.0f ? state.center : NiPoint3{ 0.0f, 1.0f, 0.0f };
-			state.bladeAxis = Normalized(state.grip.rotate * bladeModel);
+			state.bladeAxis = Normalized(state.grip.rotate * BladeInModel());
 			if (state.stringBow) {
 				SetBowGrip(a_hand);
 			}
@@ -1708,6 +2176,8 @@ namespace Inspect
 				handFrame = ArmPose::Frame(a_root);
 				if (handFrame && !state.gripSet) {
 					SetWeaponGrip(*handFrame);
+				} else if (state.gripSet && state.weapon && !state.stringBow) {
+					ApplyFist();  // the grip sliders apply live
 				}
 				if (handFrame && state.weapon) {
 					goal.hand = WeaponHand(a_view, *handFrame);
@@ -1724,27 +2194,27 @@ namespace Inspect
 			case Phase::kStow:
 			case Phase::kReturn:
 				if (state.thirdPerson) {
-					// over the shoulder into the backpack and back down along the sheath path: the stow plays it up to
-					// behind the shoulder (going over from the hold pose in its first half), the return plays the rest
-					// and hands the arm back to its animation
-					const bool      stow = state.phase == Phase::kStow;
-					const float     r = Clamp01(state.time / (stow ? settings.stowTime : settings.returnTime));
-					const StowKey   key = BodyStowAt(stow ? r * kBodyStowBack : kBodyStowBack + r * (kBodyStowLength - kBodyStowBack));
-					const float     b = stow ? Smooth(r / kBodyStowBlend) : 1.0f;
-					const NiPoint3  hold = at({ holdAt.x, holdAt.y + state.distanceOffset, holdAt.z });
-					const NiMatrix3 holdTurn = AlignAxes({ 1, 0, 0 }, { 0, 1, 0 }, holdFingers, holdPalm);
-					const NiMatrix3 path = AlignAxes({ 1, 0, 0 }, { 0, 1, 0 }, a_body.Direction(key.fingers), a_body.Direction(key.palm));
-					const NiMatrix3 turn = Slerp(holdTurn, path, b);
-					goal.wrist = at(key.wrist) + (hold - at(kBodyStow[0].wrist)) * (1.0f - b);
-					goal.pole = Normalized(Lerp(goal.pole, a_body.Direction(key.pole), b));
+					// a little up first, then down in an arc to the right hip, the item slips into the pocket; the return
+					// lets the arm hang back into its own animation from there (the pocket is close to where it hangs)
+					const float     s = state.phase == Phase::kStow ? Smooth(state.time / settings.stowTime) : 1.0f;
+					const NiPoint3  holdLocal{ holdAt.x, holdAt.y + state.distanceOffset, holdAt.z };
+					const NiPoint3  start = at(holdLocal);
+					const NiPoint3  lift = at(holdLocal + kPocketLift);
+					const NiPoint3  via = at(kPocketVia);
+					const NiPoint3  end = at(kPocket);
+					const float     u = 1.0f - s;
+					goal.wrist = start * (u * u * u) + lift * (3.0f * u * u * s) + via * (3.0f * u * s * s) + end * (s * s * s);
+					const NiMatrix3 hold = AlignAxes({ 1, 0, 0 }, { 0, 1, 0 }, holdFingers, holdPalm);
+					const NiMatrix3 pocket = AlignAxes({ 1, 0, 0 }, { 0, 1, 0 }, a_body.Direction(kPocketFingers), a_body.Direction(kPocketPalm));
+					const NiMatrix3 turn = Slerp(hold, pocket, s * s);  // the hand keeps its hold while it rises, turns on the way down
 					goal.fingers = Column(turn, 0);
 					goal.palm = Column(turn, 1);
-					if (goal.hand && handFrame) {
-						goal.hand = Slerp(state.holdHand, AlignAxes(handFrame->fingerAxis, handFrame->palmAxis, Column(path, 0), Column(path, 1)), b);
+					goal.pole = Normalized(Lerp(goal.pole, a_body.Direction(kPocketElbow), s * s));
+					if (goal.hand && handFrame) {  // a weapon: from the turned hold to fingers down, palm to the thigh
+						goal.hand = Slerp(state.holdHand, AlignAxes(handFrame->fingerAxis, handFrame->palmAxis, Column(pocket, 0), Column(pocket, 1)), s * s);
 					}
-					goal.wristBend = kBodyStowWristBend;
-					if (!stow) {
-						goal.weight = 1.0f - Smooth((r - kBodyReturnFade) / (1.0f - kBodyReturnFade));
+					if (state.phase == Phase::kReturn) {
+						goal.weight = 1.0f - Smooth(state.time / settings.returnTime);
 						goal.curl = scaled(goal.weight);
 					}
 					break;
@@ -1794,11 +2264,12 @@ namespace Inspect
 				Telekinesis::Place(glow);
 			}
 
-			const bool world = state.source == Source::kWorld;
+			const bool fromRef = state.source != Source::kInventory;
 			switch (state.phase) {
 			case Phase::kRaise:
-				// from the world the item flies from where it lay; out of the inventory it comes up on the palm
-				PlaceItem(world ? Blend(state.start, HeldItem(*hand, a_view), Smooth(state.time / settings.raiseTime)) : HeldItem(*hand, a_view));
+				// from the world the item flies from where it lay (out of a container, from inside it); out of the
+				// inventory it comes up on the palm
+				PlaceItem(fromRef ? Blend(state.start, HeldItem(*hand, a_view), Smooth(state.time / settings.raiseTime)) : HeldItem(*hand, a_view));
 				break;
 			case Phase::kHold:
 			case Phase::kSwitchView:
@@ -1814,12 +2285,20 @@ namespace Inspect
 						state.inHand = ToLocal(hand->world, state.last);
 						state.inHandSet = true;
 					}
-					PlaceItem(Combine(hand->world, state.inHand));
+					NiTransform carried = Combine(hand->world, state.inHand);
+					if (state.thirdPerson) {
+						// slips into the pocket: shrinks around its middle until it's gone
+						const float    r = state.time / settings.stowTime;
+						const float    left = std::max(1.0f - Smooth((r - kPocketShrinkFrom) / (kStowPickUpAt - kPocketShrinkFrom)), 0.01f);
+						const NiPoint3 middle = carried.translate + carried.rotate * (state.center * carried.scale);
+						carried = ItemAt(middle, carried.rotate, carried.scale * left);
+					}
+					PlaceItem(carried);
 				}
 				break;
 			case Phase::kPutBack:
 				{
-					// from the hand back to where it lay
+					// from the hand back to where it lay (into the container / plant)
 					const float t = Smooth(state.time / settings.returnTime);
 					PlaceItem(Blend(HeldItem(*hand, a_view), state.start, t));
 					break;
@@ -1985,8 +2464,33 @@ namespace Inspect
 				return &sink;
 			}
 
+			// "Hold a key to inspect": follows the key, and remembers for each Activate press whether it was held
+			static void TrackInspectKey(RE::InputEvent* a_events)
+			{
+				const auto& settings = Settings::Get();
+				if (!settings.holdKeyToInspect) {
+					return;
+				}
+				const auto userEvents = RE::UserEvents::GetSingleton();
+				for (auto event = a_events; event; event = event->next) {
+					const auto button = event->GetEventType() == RE::INPUT_EVENT_TYPE::kButton ? event->AsButtonEvent() : nullptr;
+					if (!button) {
+						continue;
+					}
+					const int code = Keys::Code(button);
+					if (code != Keys::kNone && (code == settings.inspectKey || code == settings.inspectGamepadKey)) {
+						inspectKeyHeld = button->IsPressed();
+					} else if (button->IsDown() && userEvents && button->QUserEvent() == userEvents->activate) {
+						activatedWithKey = inspectKeyHeld.load();
+					}
+				}
+			}
+
 			RE::BSEventNotifyControl ProcessEvent(RE::InputEvent* const* a_event, RE::BSTEventSource<RE::InputEvent*>*) override
 			{
+				if (a_event) {
+					TrackInspectKey(*a_event);
+				}
 				if (!a_event || !Active() || state.phase == Phase::kWaitMenu || state.phase == Phase::kWaitAnimation) {
 					return RE::BSEventNotifyControl::kContinue;
 				}
@@ -2097,10 +2601,15 @@ namespace Inspect
 		FirstPersonUpdate::func = firstPerson.write_vfunc(0x3, FirstPersonUpdate::thunk);
 		REL::Relocation<std::uintptr_t> thirdPerson{ RE::VTABLE_ThirdPersonState[0] };
 		ThirdPersonUpdate::func = thirdPerson.write_vfunc(0x3, ThirdPersonUpdate::thunk);
+		REL::Relocation<std::uintptr_t> flora{ RE::VTABLE_TESFlora[0] };
+		HarvestActivate<RE::TESFlora>::func = flora.write_vfunc(0x37, HarvestActivate<RE::TESFlora>::thunk);
+		REL::Relocation<std::uintptr_t> tree{ RE::VTABLE_TESObjectTREE[0] };
+		HarvestActivate<RE::TESObjectTREE>::func = tree.write_vfunc(0x37, HarvestActivate<RE::TESObjectTREE>::thunk);
 		InstallPlayerSkeletonsHook();
-		logs::info("Installed hooks: PlayerCharacter::Update, PlayerCharacter::UpdateAnimation, PlayerCharacter::PickUpObject, FirstPersonState::Update, ThirdPersonState::Update{}",
+		logs::info("Installed hooks: PlayerCharacter::Update, PlayerCharacter::UpdateAnimation, PlayerCharacter::PickUpObject, FirstPersonState::Update, ThirdPersonState::Update, TESFlora / TESObjectTREE::Activate{}",
 			bodyHook ? ", player skeleton update" : "");
 		InstallItemZoomHook();
+		ContainerLid::Install();
 	}
 
 	void RegisterInput()
@@ -2115,16 +2624,43 @@ namespace Inspect
 	{
 		// the 3D is reloaded with the game: never touch the old nodes, just let go of them
 		ArmPose::Forget();
+		ContainerLid::Forget();
+		searchedContainer = 0;
 		BodyArm::Forget();
 		Telekinesis::Forget();
 		if (!Active()) {
 			return;
 		}
 		logs::info("Inspection dropped (game load)");
+		if (state.source == Source::kContainer) {
+			QuickLoot::Pause(false);
+		}
 		SmoothCam::GiveBack();
 		Fade::Reset();
 		WorldPause::Reset();
 		RestoreControls();
 		state = {};
+	}
+
+	bool OfferContainerItem(const ContainerItem& a_item)
+	{
+		if (!CanInspectContainerItem(a_item)) {
+			return false;
+		}
+		containerPending = true;
+		SKSE::GetTaskInterface()->AddTask([a_item]() {
+			containerPending = false;
+			if (!BeginFromContainer(a_item)) {
+				GiveContainerItem(a_item);  // QuickLoot left it to us: taken the normal way
+			}
+		});
+		return true;
+	}
+
+	void ContainerShown(RE::ObjectRefHandle a_container)
+	{
+		if (a_container.native_handle() != searchedContainer.load()) {
+			searchedContainer = 0;
+		}
 	}
 }

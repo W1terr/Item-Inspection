@@ -7,10 +7,12 @@ Built with CommonLibSSE-NG (https://github.com/alandtse/CommonLibVR/tree/ng, MIT
 (QTR-Modding, https://github.com/QTR-Modding/SKSE-Menu-Framework-3-API, LGPL-2.1).
 The 3rd person camera works together with SmoothCam through its modder API (SmoothCamAPI.h by mwilsnd,
 https://github.com/mwilsnd/SkyrimSE-SmoothCam).
+Items taken from containers come through QuickLoot IE's modder API (QuickLootAPI.h, MIT,
+https://github.com/MissCorruption/QuickLootIE); the searching animation is the game's own
+(IdleSearchingChest).
 
 Needs SKSE by the SKSE team and Address Library for SKSE Plugins by meh321.
 
 The telekinesis hand effect, its light and its grab sound are the vanilla Telekinesis spell's from Skyrim.esm, and
 the fist that holds weapons starts from the game's 1st person one-handed idle animation. They are used from the game
-while it runs. The 3rd person motion of putting an item in the backpack follows the vanilla bow sheath animation
-(bow_unequip), mirrored to the right hand: a few positions sampled from it are built into the plugin.
+while it runs.

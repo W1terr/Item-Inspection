@@ -2,6 +2,7 @@
 
 #include "Keys.h"
 #include "Lang.h"
+#include "QuickLoot.h"
 #include "Seen.h"
 #include "Settings.h"
 
@@ -156,6 +157,34 @@ namespace Menu
 			Checkbox("Arrows and bolts", v.skipAmmo);
 			Checkbox("Weapons", v.skipWeapons, "Swords, axes, bows... go straight into the inventory, like in the normal game.");
 			Checkbox("Armor and clothes", v.skipArmor, "Armor, clothes and jewelry go straight into the inventory, like in the normal game.");
+			Checkbox("Harvested plants", v.skipHarvest, "Ingredients from plants, mushrooms, nests... go straight into the inventory, like in the normal game.");
+
+			Header("QuickLoot");
+			Checkbox("Items taken with QuickLoot go to your hand", v.quickLoot,
+				"When you take an item from a container or a body with QuickLoot's \"Take\", your character searches it first\n"
+				"and then holds the item like any other. Put it in the backpack to take it, or put it back into the container.\n"
+				"\"Take All\" and \"Equip\" / \"Use\" work as usual.");
+			if (v.quickLoot) {
+				ImGui::Indent();
+				Slider("Search animation", v.searchTime, Settings::kSearchTime, "%.2f s",
+					"Seconds your character searches the container first (the game's own searching animation).\n"
+					"Only in 3rd person, 0 = no animation.");
+				Slider("Search again (same container)", v.searchAgainTime, Settings::kSearchTime, "%.2f s",
+					"Seconds of searching when you take another item from the container you just searched:\n"
+					"a quick reach in. Until you look at another container. 0 = no animation.");
+				Checkbox("Only big chests", v.bigChestsOnly,
+					"Only items from real chests (wooden, noble, Dwemer, Falmer, ruins chests) go to your hand.\n"
+					"Barrels, sacks, urns, drawers, wardrobes and bodies work as usual.");
+				if (!v.bigChestsOnly) {
+					Checkbox("Also from bodies", v.lootBodies,
+						"Items you take from dead bodies (and corpses lying around) go to your hand too.\n"
+						"Off: those are taken as usual.");
+				}
+				ImGui::Unindent();
+			}
+			if (!QuickLoot::Installed()) {
+				ImGui::TextDisabled("%s", T("QuickLoot IE isn't installed: this has no effect."));
+			}
 
 			Header("Controls");
 			ImGui::Text(" ");
@@ -167,6 +196,12 @@ namespace Menu
 			KeyRow("Put back", "putback", v.putBackKey, v.putBackGamepadKey);
 			KeyRow("Look around (hold)", "look", v.lookKey, v.lookGamepadKey);
 			KeyRow("Switch view", "switchview", v.switchViewKey, v.switchViewGamepadKey);
+			if (v.holdKeyToInspect) {
+				KeyRow("Inspect key (hold)", "inspect", v.inspectKey, v.inspectGamepadKey);
+			}
+			Checkbox("Hold a key to inspect", v.holdKeyToInspect,
+				"On: an item goes to your hand only if you hold the inspect key while you press Activate\n"
+				"(picking up, harvesting, QuickLoot's Take). A normal press picks it up as usual.");
 			Slider("Mouse speed", v.mouseSensitivity, Settings::kSensitivity, "%.2f", "How fast moving the mouse turns the item.");
 			Slider("Gamepad speed", v.gamepadSensitivity, Settings::kSensitivity, "%.2f", "How fast the right stick turns the item.");
 			Checkbox("Invert up / down", v.invertY);
@@ -200,6 +235,11 @@ namespace Menu
 			Slider("Blade lean left", v.weaponLeanLeft, Settings::kHandAngle, "%.0f", "Degrees the blade tips to the left (-: right) from straight up.");
 			Slider("Blade lean forward", v.weaponLeanForward, Settings::kHandAngle, "%.0f", "Degrees the blade tips away from you (-: towards you).");
 			Slider("Blade roll", v.weaponRoll, Settings::kHandAngle, "%.0f", "Turns the weapon around the blade.");
+			Slider("Hand along the handle", v.gripSlide, Settings::kGripSlide, "%.1f",
+				"Slides your hand along the weapon's handle: + towards the pommel, - towards the blade.\n"
+				"For weapons your hand holds at the wrong place, e.g. at the crossguard.");
+			Slider("Turn in the hand", v.gripTurn, Settings::kHandAngle, "%.0f", "Turns the weapon around its blade inside your fist, in degrees.");
+			Slider("Tilt in the hand", v.gripTilt, Settings::kGripAngle, "%.0f", "Tilts the weapon inside your fist, in degrees.");
 
 			Header("Bows and crossbows");
 			Slider("Bow hand right", v.bowRight, Settings::kHoldRight, "%.1f", "Game units to the right of your eyes.");
@@ -212,7 +252,7 @@ namespace Menu
 			Header("Third person");
 			Checkbox("Stay in third person", v.thirdPerson,
 				"In 3rd person the camera moves in over your shoulder instead of switching to 1st person,\n"
-				"and you see your hand put the item in the backpack behind your back.");
+				"and you see your hand put the item away in a pocket at your hip.");
 			if (v.thirdPerson) {
 				ImGui::Indent();
 				Slider("Camera right", v.cameraRight, Settings::kCameraSide, "%.1f", "Game units the camera is to the right of your eyes.");
@@ -229,6 +269,11 @@ namespace Menu
 				Slider("Item right (3rd person)", v.bodyItemRight, Settings::kItemOffset, "%.1f", "Moves the item to the right (-: left) as the camera sees it.");
 				Slider("Item forward (3rd person)", v.bodyItemForward, Settings::kItemOffset, "%.1f", "Moves the item away from the camera (-: towards it).");
 				Slider("Item up (3rd person)", v.bodyItemUp, Settings::kItemOffset, "%.1f", "Moves the item up (-: down) as the camera sees it.");
+				Slider("Weapon: hand along the handle (3rd person)", v.bodyGripSlide, Settings::kGripSlide, "%.1f",
+					"Slides your hand along the weapon's handle: + towards the pommel, - towards the blade.\n"
+					"For weapons your hand holds at the wrong place, e.g. at the crossguard.");
+				Slider("Weapon: turn in the hand (3rd person)", v.bodyGripTurn, Settings::kHandAngle, "%.0f", "Turns the weapon around its blade inside your fist, in degrees.");
+				Slider("Weapon: tilt in the hand (3rd person)", v.bodyGripTilt, Settings::kGripAngle, "%.0f", "Tilts the weapon inside your fist, in degrees.");
 				ImGui::Unindent();
 			}
 			Slider("Wait for the pickup animation", v.animationWait, Settings::kWait, "%.2f s",

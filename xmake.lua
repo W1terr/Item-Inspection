@@ -3,7 +3,7 @@ includes("lib/commonlibsse-ng")
 
 -- set project constants
 set_project("ItemInspection")
-set_version("2.0.1")
+set_version("2.2.0")
 set_license("GPL-3.0")
 set_languages("c++23")
 set_warnings("allextra")
@@ -31,3 +31,7 @@ target("ItemInspection")
     -- SmoothCam modder API (header only, from SmoothCam's author)
     add_headerfiles("lib/SmoothCamAPI/*.h")
     add_includedirs("lib/SmoothCamAPI")
+
+    -- QuickLoot IE modder API (header only, MIT, from QuickLoot IE)
+    add_headerfiles("lib/QuickLootAPI/*.h")
+    add_includedirs("lib/QuickLootAPI")

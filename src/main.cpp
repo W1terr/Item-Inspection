@@ -1,6 +1,7 @@
 #include "Inspect.h"
 #include "Lang.h"
 #include "Menu.h"
+#include "QuickLoot.h"
 #include "Seen.h"
 #include "Settings.h"
 #include "SmoothCam.h"
@@ -12,6 +13,7 @@ namespace
 		switch (a_msg->type) {
 		case SKSE::MessagingInterface::kPostLoad:
 			SmoothCam::Listen();
+			QuickLoot::Connect();
 			break;
 		case SKSE::MessagingInterface::kPostPostLoad:
 			SmoothCam::Request();
@@ -36,7 +38,7 @@ namespace
 
 SKSE_PLUGIN_LOAD(const SKSE::LoadInterface* a_skse)
 {
-	SKSE::Init(a_skse, { .trampoline = true, .trampolineSize = 128 });  // inventory zoom calls, player skeleton update call
+	SKSE::Init(a_skse, { .trampoline = true, .trampolineSize = 256 });  // inventory zoom calls, player skeleton update call, container lid
 	logs::info("Item Inspection loading");
 
 	Seen::Register();

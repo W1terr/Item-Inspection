@@ -49,6 +49,7 @@ namespace Settings
 			a_func("General", "bSkipAmmo", a_values.skipAmmo);
 			a_func("General", "bSkipWeapons", a_values.skipWeapons);
 			a_func("General", "bSkipArmor", a_values.skipArmor);
+			a_func("General", "bSkipHarvest", a_values.skipHarvest);
 			a_func("General", "bShowHint", a_values.showHint);
 			a_func("General", "bWorldWaits", a_values.worldWaits);
 			a_func("General", "bFadeTransition", a_values.fadeTransition);
@@ -63,6 +64,9 @@ namespace Settings
 			a_func("Controls", "iLookGamepadKey", a_values.lookGamepadKey);
 			a_func("Controls", "iSwitchViewKey", a_values.switchViewKey);
 			a_func("Controls", "iSwitchViewGamepadKey", a_values.switchViewGamepadKey);
+			a_func("Controls", "bHoldKeyToInspect", a_values.holdKeyToInspect);
+			a_func("Controls", "iInspectKey", a_values.inspectKey);
+			a_func("Controls", "iInspectGamepadKey", a_values.inspectGamepadKey);
 			a_func("Controls", "bInvertLookY", a_values.invertLookY);
 			a_func("Controls", "fMouseSensitivity", a_values.mouseSensitivity, kSensitivity);
 			a_func("Controls", "fGamepadSensitivity", a_values.gamepadSensitivity, kSensitivity);
@@ -85,6 +89,9 @@ namespace Settings
 			a_func("Weapons", "fWeaponLeanLeft", a_values.weaponLeanLeft, kHandAngle);
 			a_func("Weapons", "fWeaponLeanForward", a_values.weaponLeanForward, kHandAngle);
 			a_func("Weapons", "fWeaponRoll", a_values.weaponRoll, kHandAngle);
+			a_func("Weapons", "fGripSlide", a_values.gripSlide, kGripSlide);
+			a_func("Weapons", "fGripTurn", a_values.gripTurn, kHandAngle);
+			a_func("Weapons", "fGripTilt", a_values.gripTilt, kGripAngle);
 			a_func("Bows", "fBowRight", a_values.bowRight, kHoldRight);
 			a_func("Bows", "fBowForward", a_values.bowForward, kHoldForward);
 			a_func("Bows", "fBowUp", a_values.bowUp, kHoldUp);
@@ -104,6 +111,14 @@ namespace Settings
 			a_func("ThirdPerson", "fHandRight", a_values.bodyHoldRight, kHoldRight);
 			a_func("ThirdPerson", "fHandForward", a_values.bodyHoldForward, kHoldForward);
 			a_func("ThirdPerson", "fHandUp", a_values.bodyHoldUp, kBodyHoldUp);
+			a_func("ThirdPerson", "fWeaponGripSlide", a_values.bodyGripSlide, kGripSlide);
+			a_func("ThirdPerson", "fWeaponGripTurn", a_values.bodyGripTurn, kHandAngle);
+			a_func("ThirdPerson", "fWeaponGripTilt", a_values.bodyGripTilt, kGripAngle);
+			a_func("QuickLoot", "bQuickLoot", a_values.quickLoot);
+			a_func("QuickLoot", "fSearchTime", a_values.searchTime, kSearchTime);
+			a_func("QuickLoot", "fSearchAgainTime", a_values.searchAgainTime, kSearchTime);
+			a_func("QuickLoot", "bLootBodies", a_values.lootBodies);
+			a_func("QuickLoot", "bBigChestsOnly", a_values.bigChestsOnly);
 			a_func("Hold", "fRaiseTime", a_values.raiseTime, kTime);
 			a_func("Hold", "fStowTime", a_values.stowTime, kTime);
 			a_func("Hold", "fReturnTime", a_values.returnTime, kTime);
