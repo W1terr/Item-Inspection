@@ -50,6 +50,7 @@ namespace Settings
 			a_func("General", "bSkipWeapons", a_values.skipWeapons);
 			a_func("General", "bSkipArmor", a_values.skipArmor);
 			a_func("General", "bSkipHarvest", a_values.skipHarvest);
+			a_func("General", "bBuyStoreItems", a_values.buyStoreItems);
 			a_func("General", "bShowHint", a_values.showHint);
 			a_func("General", "bWorldWaits", a_values.worldWaits);
 			a_func("General", "bFadeTransition", a_values.fadeTransition);
@@ -104,6 +105,7 @@ namespace Settings
 			a_func("ThirdPerson", "fCameraTime", a_values.cameraTime, kTime);
 			a_func("ThirdPerson", "fAnimationWait", a_values.animationWait, kWait);
 			a_func("ThirdPerson", "bStandStill", a_values.standStill);
+			a_func("ThirdPerson", "bHeadLook", a_values.headLook);
 			a_func("ThirdPerson", "fItemSize", a_values.bodyItemScale, kItemScale);
 			a_func("ThirdPerson", "fItemRight", a_values.bodyItemRight, kItemOffset);
 			a_func("ThirdPerson", "fItemForward", a_values.bodyItemForward, kItemOffset);

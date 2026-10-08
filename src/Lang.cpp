@@ -244,6 +244,7 @@ namespace Lang
 			{ "Put in backpack", "Mettre dans le sac", "In den Rucksack", "Metti nello zaino", "Guardar en la mochila", "Włóż do plecaka",
 				"В рюкзак", "バックパックに入れる", "放進背包" },
 			{ "Put back", "Reposer", "Zurücklegen", "Rimetti a posto", "Devolver", "Odłóż", "Вернуть на место", "元に戻す", "放回原處" },
+			{ "Buy", "Acheter", "Kaufen", "Compra", "Comprar", "Kup", "Купить", "購入", "購買" },
 			{ "Look around (hold)", "Regarder autour (maintenir)", "Umsehen (halten)", "Guardati intorno (tieni premuto)",
 				"Mirar alrededor (mantener)", "Rozglądanie się (przytrzymaj)", "Осмотреться (удерживать)", "見回す（長押し）",
 				"環顧四周（按住）" },
@@ -515,6 +516,17 @@ namespace Lang
 				"Персонаж возвращается в стойку и замирает, пока смотрит на предмет,\nвместо анимаций ожидания.",
 				"キャラクターは立ち姿勢に戻り、アイテムを見ている間は静止します。\n待機アニメーションは再生されません。",
 				"角色會回到站姿，在查看物品時保持靜止，\n而不是播放待機動畫。" },
+			{ "Look at the item", "Regarder l'objet", "Den Gegenstand ansehen", "Guarda l'oggetto", "Mirar el objeto", "Patrz na przedmiot",
+				"Смотреть на предмет", "アイテムを見る", "注視物品" },
+			{ "Your character's head turns to look at the item in the hand.",
+				"La tête de votre personnage se tourne pour regarder l'objet dans sa main.",
+				"Der Kopf deiner Figur dreht sich zum Gegenstand in der Hand.",
+				"La testa del tuo personaggio si gira a guardare l'oggetto in mano.",
+				"La cabeza de tu personaje se gira para mirar el objeto que tiene en la mano.",
+				"Głowa twojej postaci obraca się w stronę przedmiotu w ręce.",
+				"Голова персонажа поворачивается к предмету в руке.",
+				"キャラクターの頭が手の中のアイテムの方を向きます。",
+				"角色的頭會轉向手中的物品。" },
 			{ "Item size (3rd person)", "Taille de l'objet (3e personne)", "Gegenstandsgröße (Third Person)", "Dimensione dell'oggetto (terza persona)",
 				"Tamaño del objeto (tercera persona)", "Rozmiar przedmiotu (trzecia osoba)", "Размер предмета (третье лицо)", "アイテムの大きさ（三人称）", "物品大小（第三人稱）" },
 			{ "Items (not weapons) are shown this much smaller in 3rd person.", "Les objets (sauf les armes) sont affichés plus petits d'autant à la 3e personne.",
@@ -726,6 +738,46 @@ namespace Lang
 				"QuickLoot IE no está instalado: esta opción no tiene efecto.", "QuickLoot IE nie jest zainstalowany: ta opcja nic nie robi.",
 				"QuickLoot IE не установлен: эта настройка ни на что не влияет.", "QuickLoot IE がインストールされていません：この設定は効果がありません。",
 				"未安裝 QuickLoot IE：此選項沒有作用。" },
+			{ "Buy store items when you put them in the backpack", "Acheter les objets des boutiques en les mettant dans le sac",
+				"Ladenware erst beim Einstecken in den Rucksack kaufen", "Compra gli oggetti dei negozi quando li metti nello zaino",
+				"Comprar los objetos de las tiendas al guardarlos en la mochila", "Kupuj przedmioty ze sklepów przy wkładaniu do plecaka",
+				"Покупать товары из лавок, когда кладёте их в рюкзак", "店の商品はバッグに入れるときに購入する", "將商店物品放進背包時才購買" },
+			{ "With Purchaseable Store-Display-Items: an item for sale goes to your hand like any other.\n"
+			  "Putting it in the backpack asks you to buy it, with that mod's own message box and price;\n"
+			  "if you don't buy it, it is put back.\nOff: that mod asks right away, as usual.",
+				"Avec Purchaseable Store-Display-Items : un objet à vendre passe dans votre main comme n'importe quel autre.\n"
+				"Le mettre dans le sac vous propose de l'acheter (la fenêtre et le prix de ce mod) ;\n"
+				"si vous ne l'achetez pas, il est remis en place.\nDésactivé : ce mod demande tout de suite, comme d'habitude.",
+				"Mit Purchaseable Store-Display-Items: Ein Gegenstand zum Verkauf landet wie jeder andere in deiner Hand.\n"
+				"Steckst du ihn in den Rucksack, wirst du gefragt, ob du ihn kaufen willst (Fenster und Preis dieser Mod);\n"
+				"kaufst du ihn nicht, wird er zurückgelegt.\nAus: Diese Mod fragt wie gewohnt sofort.",
+				"Con Purchaseable Store-Display-Items: un oggetto in vendita finisce nella tua mano come qualsiasi altro.\n"
+				"Metterlo nello zaino ti chiede di comprarlo (la finestra e il prezzo di quella mod);\n"
+				"se non lo compri, viene rimesso al suo posto.\nDisattivato: quella mod chiede subito, come al solito.",
+				"Con Purchaseable Store-Display-Items: un objeto en venta va a tu mano como cualquier otro.\n"
+				"Al guardarlo en la mochila se te pide comprarlo (la ventana y el precio de ese mod);\n"
+				"si no lo compras, se devuelve a su sitio.\nDesactivado: ese mod pregunta en el acto, como siempre.",
+				"Z Purchaseable Store-Display-Items: przedmiot na sprzedaż trafia do ręki jak każdy inny.\n"
+				"Włożenie go do plecaka pyta, czy chcesz go kupić (okno i cena tego moda);\n"
+				"jeśli go nie kupisz, zostanie odłożony.\nWyłączone: ten mod pyta od razu, jak zwykle.",
+				"С Purchaseable Store-Display-Items: товар оказывается у вас в руке, как любой другой предмет.\n"
+				"Когда вы кладёте его в рюкзак, вам предложат его купить (окно и цена этого мода);\n"
+				"если не купите, он вернётся на место.\nВыкл.: этот мод спрашивает сразу, как обычно.",
+				"Purchaseable Store-Display-Items 使用時：売り物も他のアイテムと同じようにまず手に取ります。\n"
+				"バッグに入れるときに購入を尋ねられます（そのMODのメッセージと価格）。\n"
+				"買わなければ元の場所に戻されます。\nオフ：そのMODが通常どおりすぐに尋ねます。",
+				"搭配 Purchaseable Store-Display-Items：待售物品會像其他物品一樣先拿在手上。\n"
+				"放進背包時會詢問是否購買（使用該模組的訊息框與價格）；\n"
+				"不購買的話會放回原處。\n關閉：該模組會像平常一樣立即詢問。" },
+			{ "Purchaseable Store-Display-Items isn't installed: this has no effect.",
+				"Purchaseable Store-Display-Items n'est pas installé : cette option n'a aucun effet.",
+				"Purchaseable Store-Display-Items ist nicht installiert: Diese Option hat keine Wirkung.",
+				"Purchaseable Store-Display-Items non è installato: questa opzione non ha effetto.",
+				"Purchaseable Store-Display-Items no está instalado: esta opción no tiene efecto.",
+				"Purchaseable Store-Display-Items nie jest zainstalowany: ta opcja nic nie robi.",
+				"Purchaseable Store-Display-Items не установлен: эта настройка ни на что не влияет.",
+				"Purchaseable Store-Display-Items がインストールされていません：この設定は効果がありません。",
+				"未安裝 Purchaseable Store-Display-Items：此選項沒有作用。" },
 		};
 
 		const std::unordered_map<std::string_view, const Entry*>& Table()

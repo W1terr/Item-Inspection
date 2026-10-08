@@ -5,6 +5,7 @@
 #include "ContainerLid.h"
 #include "Fade.h"
 #include "HUD.h"
+#include "HeadLook.h"
 #include "Keys.h"
 #include "Lang.h"
 #include "MathUtil.h"
@@ -12,6 +13,7 @@
 #include "Seen.h"
 #include "Settings.h"
 #include "SmoothCam.h"
+#include "StoreDisplay.h"
 #include "Telekinesis.h"
 #include "WorldPause.h"
 
@@ -33,6 +35,7 @@ namespace Inspect
 			kWaitCamera,  // switching to 1st person
 			kRaise,       // hand brings the item up
 			kHold,        // looking at it, mouse turns it
+			kBuying,      // an item for sale (Purchaseable Store-Display-Items): its buy box is open, the hand keeps holding
 			kSwitchView,  // switching between 3rd and 1st person while holding (fade to black, switch, fade back)
 			kSettle,      // a floating item sinks onto the palm before it's put away / back
 			kStow,        // hand goes down and behind the back (3rd person: into a pocket at the hip), item goes into the inventory
@@ -76,6 +79,17 @@ namespace Inspect
 		const NiPoint3 kPocketElbow{ 0.35f, -1.0f, 0.1f };   // the elbow goes back
 		constexpr float kPocketShrinkFrom = 0.65f;          // part of the stow from which the item slips in (gone at kStowPickUpAt)
 		constexpr std::array<float, 5> kPocketFist{ 0.9f, 1.15f, 1.2f, 1.25f, 1.3f };  // radians per joint, thumb first (ArmPose bends the thumb less)
+		// sneaking: the body is crouched, so the pocket is found from the right thigh bone instead (eye space axes,
+		// scaled), as tuned in game: out at the side of the crouched thigh, a little in front, lower down
+		const NiPoint3 kPocketFromThigh{ 18.0f, 6.0f, -10.0f };
+		// sneaking in 3rd person, as tuned in game: the hand held lower and further out to the right (eye space, from the
+		// crouched head), the elbow bent more than the reach needs and swung in and forward, the wrist kept closer to its
+		// animation (degrees)
+		const NiPoint3  kSneakHold{ 34.2f, 24.9f, -54.0f };
+		constexpr float kSneakElbowBend = 53.0f;
+		constexpr float kSneakElbowOut = -47.0f;   // around the forward axis: + = out to the side
+		constexpr float kSneakElbowBack = -20.0f;  // around the right axis: + = back
+		constexpr float kSneakWristBend = 18.0f;
 		// weapons (not bows) in 3rd person, as tuned in game: where the hand holds them next to other items (eye space,
 		// scaled with the body) and the blade's angles (degrees: tipped left, tipped away, turned around the blade)
 		const NiPoint3  kBodyWeaponOffset{ 0.0f, 1.4f, 0.0f };  // from the 3rd person hand position (fHand*)
@@ -94,8 +108,13 @@ namespace Inspect
 		constexpr float kActivityFall = 1.5f;    // ... and settles when the turning stops
 		constexpr float kLeanFollow = 3.0f;      // 1/s, wrist lean
 		constexpr float kFingerFollow = 6.0f;    // 1/s, how fast each finger follows its target bend
+		constexpr float kFistFollow = 14.0f;     // ... closing into a fist to put the item away (a quick grab)
 		constexpr float kMaxFingerWave = 3.5f;   // radians per second the finger wave runs at most while the item turns
 		constexpr float kSettleTime = 0.3f;      // seconds the item takes to sink onto the palm
+		constexpr float kStealWake = 0.4f;       // stealing: seconds the woken world gets to see the player before the theft
+		constexpr float kBuyTimeout = 30.0f;     // seconds (game running) without an answer from the store's buy script: not bought
+		constexpr float kHeadFollow = 4.0f;      // 1/s: how fast the head turns to the item (3rd person)
+		constexpr float kHeadReturn = 8.0f;      // ... and back to its animation when the item is put away
 		constexpr float kCupCurl = 0.35f;        // fingers closing around an item lying on the palm
 		constexpr float kRestAbovePalm = 3.0f;   // the item comes down near the palm, not all the way onto it
 		constexpr float kGlowAbovePalm = 2.0f;   // the telekinesis hand effect's center over the palm
@@ -145,6 +164,13 @@ namespace Inspect
 			bool                          arg3{ false };
 			bool                          playSound{ true };
 			bool                          pickedUp{ false };
+			float                         awake{ -1.0f };  // stealing: seconds since the world woke up for the theft (-1 = not woken)
+			// for sale (Purchaseable Store-Display-Items): taken for free, bought when it goes into the backpack
+			bool                          forSale{ false };
+			bool                          bought{ false };      // paid for and picked up by the store's script
+			std::uint32_t                 buyRequest{ 0 };      // which buy the store's answer belongs to
+			bool                          buyAnswered{ false };
+			std::int32_t                  countBefore{ 0 };     // how many of the item the player had before buying
 			ContainerItem                 take;           // from a container: what QuickLoot would have taken
 			Harvest                       harvest;        // from a plant (the ref): its harvest, done when the item is stowed
 			NiPoint3                      containerSpot;  // where the item comes out of the container / plant (and goes back in)
@@ -184,6 +210,7 @@ namespace Inspect
 			bool                          headTurned{ false };     // we rotated the camera node last frame
 			// weapons: held by the grip (hand bone space), fingers closed on the handle, turned by the mouse
 			bool                          weapon{ false };
+			bool                          staff{ false };  // staves: the shaft runs along the model's +Y, through the grip
 			bool                          bow{ false };  // bows and crossbows: their own hold settings (held further out)
 			bool                          gripSet{ false };
 			NiTransform                   grip;
@@ -206,6 +233,11 @@ namespace Inspect
 			bool                          thirdPerson{ false };
 			float                         bodyScale{ 1.0f };
 			float                         eyeHeight{ kEyeHeight };  // above the player's root, measured at the start
+			float                         eyeForward{ kEyeForward };  // in front of the root (unscaled); sneaking: measured at the start
+			bool                          sneaking{ false };        // stays crouched: the pocket is found from the thigh
+			float                         headWeight{ 0.0f };       // 3rd person: 0 = the head animates, 1 = it looks at the item
+			NiPoint3                      lookTarget;               // the held item's middle (world), last placed
+			bool                          lookTargetSet{ false };
 			NiPoint3                      cameraStart;              // the rendered camera when we took it
 			NiMatrix3                     cameraStartAxes;          // its forward, up, right
 			float                         cameraBlend{ 0.0f };      // 0 = where the game had it, 1 = over the shoulder
@@ -217,6 +249,7 @@ namespace Inspect
 			bool                          switched{ false };        // kSwitchView: the camera was switched (in the dark)
 			bool                          captureStartOnReturn{ false };  // switched to 3rd person: fly back to where the game has the camera then
 			bool                          movementOpened{ false };         // Improved Camera: movement "on" for its camera, keys blocked
+			bool                          sneakKeyBlocked{ false };        // the sneak key does nothing (sneaking itself goes on)
 			std::vector<Flag>             disabledControls;
 			RE::NiPointer<RE::NiAVObject> hiddenWeapon;
 
@@ -402,8 +435,9 @@ namespace Inspect
 			const auto store = Keys::Name(gamepad ? settings.storeGamepadKey : settings.storeKey);
 			const auto putBack = Keys::Name(gamepad ? settings.putBackGamepadKey : settings.putBackKey);
 			std::string text = state.name.empty() ? "" : state.name + "    ";
-			text += state.source != Source::kInventory ? std::format("[{}] {}    [{}] {}", store, Lang::T("Put in backpack"), putBack, Lang::T("Put back")) :
-			                                         std::format("[{}] {}", store, Lang::T("Put in backpack"));
+			const char* storeText = Lang::T(state.forSale ? "Buy" : "Put in backpack");
+			text += state.source != Source::kInventory ? std::format("[{}] {}    [{}] {}", store, storeText, putBack, Lang::T("Put back")) :
+			                                         std::format("[{}] {}", store, storeText);
 			const auto switchView = Keys::Name(gamepad ? settings.switchViewGamepadKey : settings.switchViewKey);
 			text += std::format("    [{}] {}", switchView, Lang::T("Switch view"));
 			HUD::ShowHint(text);  // stays until the item is put away
@@ -417,12 +451,18 @@ namespace Inspect
 			if (!controls) {
 				return;
 			}
+			// Not the sneaking controls: switching those off makes the player stand up (the player's UserEventEnabledEvent
+			// sink ends sneaking, AE 40739). Only the sneak key is blocked, so a sneaking player stays crouched.
 			for (const auto flag : { Flag::kMovement, Flag::kLooking, Flag::kActivate, Flag::kMenu, Flag::kPOVSwitch, Flag::kFighting,
-					 Flag::kSneaking, Flag::kWheelZoom, Flag::kJumping }) {
+					 Flag::kWheelZoom, Flag::kJumping }) {
 				if (controls->AreControlsEnabled(flag)) {
 					controls->ToggleControls(flag, false, false);
 					state.disabledControls.push_back(flag);
 				}
+			}
+			if (const auto playerControls = RE::PlayerControls::GetSingleton(); playerControls && playerControls->sneakHandler && !state.sneakKeyBlocked) {
+				playerControls->sneakHandler->SetInputEventHandlingEnabled(false);
+				state.sneakKeyBlocked = true;
 			}
 			if (!state.hudModePushed) {
 				HUD::SetHoldMode(true);  // no crosshair item info, compass or bars while holding
@@ -437,6 +477,12 @@ namespace Inspect
 					playerControls->movementHandler->SetInputEventHandlingEnabled(true);
 				}
 				state.movementOpened = false;
+			}
+			if (state.sneakKeyBlocked) {
+				if (const auto playerControls = RE::PlayerControls::GetSingleton(); playerControls && playerControls->sneakHandler) {
+					playerControls->sneakHandler->SetInputEventHandlingEnabled(true);
+				}
+				state.sneakKeyBlocked = false;
 			}
 			if (const auto controls = RE::ControlMap::GetSingleton()) {
 				for (const auto flag : state.disabledControls) {
@@ -502,6 +548,7 @@ namespace Inspect
 			if (const auto weapon = a_object->As<RE::TESObjectWEAP>()) {
 				state.bow = weapon->IsBow() || weapon->IsCrossbow();
 				state.stringBow = weapon->IsBow();
+				state.staff = weapon->IsStaff();
 			}
 		}
 
@@ -552,6 +599,8 @@ namespace Inspect
 			RE::NiUpdateData update{};
 			state.item->Update(update);
 			state.last = a_world;
+			state.lookTarget = a_world.translate + a_world.rotate * (state.center * a_world.scale);
+			state.lookTargetSet = true;
 		}
 
 		void HideWeapon()
@@ -579,6 +628,40 @@ namespace Inspect
 		// Ends a look-around: a_snap = the head is straight again right away
 		void StopLooking(bool a_snap);
 
+		// whether putting the held item in the backpack is a crime
+		bool Stealing()
+		{
+			switch (state.source) {
+			case Source::kWorld:
+			case Source::kHarvest:
+				{
+					const auto ref = state.ref.get();
+					return ref && ref->IsCrimeToActivate();
+				}
+			case Source::kContainer:
+				return state.take.stealing;
+			default:
+				return false;
+			}
+		}
+
+		// The theft check (the game's pickup / harvest, our StealAlarm for containers) only finds witnesses while the
+		// AI and detection run, so a paused world wakes up as soon as a stolen item is to be put away
+		void WakeWorldForTheft()
+		{
+			if (state.awake < 0.0f && WorldPause::Active() && Stealing()) {
+				WorldPause::End();
+				state.awake = 0.0f;
+				logs::info("Stealing: the world wakes up to see it");
+			}
+		}
+
+		// the item may go into the backpack now (a woken world had time to look at the player)
+		bool TheftSeen()
+		{
+			return state.awake < 0.0f || state.awake >= kStealWake;
+		}
+
 		void Finish()
 		{
 			if (state.searching) {
@@ -588,6 +671,7 @@ namespace Inspect
 			WorldPause::End();
 			Telekinesis::Stop();
 			ArmPose::Release();
+			HeadLook::Release();
 			BodyArm::Restore();
 			DetachItem();
 			ShowWorldModel();
@@ -674,7 +758,8 @@ namespace Inspect
 			}
 		}
 
-		bool CanInspect(RE::PlayerCharacter* a_player, RE::TESObjectREFR* a_ref)
+		// a_forSale: an item for sale (Purchaseable Store-Display-Items), bought when it goes into the backpack: no theft
+		bool CanInspect(RE::PlayerCharacter* a_player, RE::TESObjectREFR* a_ref, bool a_forSale = false)
 		{
 			const auto& settings = Settings::Get();
 			if (!settings.enabled || Active() || !InspectKeyAllows() || !a_ref || a_ref->IsDisabled() || a_ref->IsMarkedForDeletion() || !a_ref->Get3D()) {
@@ -687,7 +772,7 @@ namespace Inspect
 			if (!settings.alwaysInspect && Seen::Contains(base->GetFormID())) {
 				return false;  // looked at this kind of item before
 			}
-			if (!settings.inspectStolen && a_ref->IsCrimeToActivate()) {
+			if (!a_forSale && !settings.inspectStolen && a_ref->IsCrimeToActivate()) {
 				return false;  // stealing: normal pickup
 			}
 			if (!PlayerFree(a_player) || (settings.skipInCombat && a_player->IsInCombat()) || MenuOpen()) {
@@ -777,6 +862,13 @@ namespace Inspect
 			CameraFrame view;
 		};
 
+		// 3rd person: where the hand holds the item, eye space
+		NiPoint3 BodyHold()
+		{
+			const auto& settings = Settings::Get();
+			return state.sneaking ? kSneakHold : NiPoint3{ settings.bodyHoldRight, settings.bodyHoldForward, settings.bodyHoldUp };
+		}
+
 		std::optional<BodyFrames> ThirdPersonFrames()
 		{
 			const auto player = Player();
@@ -788,11 +880,18 @@ namespace Inspect
 			const float scale = state.bodyScale;
 			BodyFrames  frames;
 			frames.body = MakeCameraFrame(root->world.translate + NiPoint3{ 0.0f, 0.0f, state.eyeHeight }, 0.0f, player->data.angle.z);
-			frames.body.eye += frames.body.forward * (kEyeForward * scale);
-			const NiPoint3 camera = frames.body.ToWorld(NiPoint3{ settings.cameraRight, -settings.cameraBack, settings.cameraUp } * scale);
-			const NiPoint3 hand = frames.body.ToWorld(NiPoint3{ settings.bodyHoldRight, settings.bodyHoldForward, settings.bodyHoldUp } * scale);
-			const NiPoint3 look = hand + frames.body.up * (settings.holdHeight * scale);  // the item floats there
-			const NiPoint3 direction = Normalized(look - camera, frames.body.forward);
+			frames.body.eye += frames.body.forward * (state.eyeForward * scale);
+			// the camera: over the shoulder like standing, looking where a standing hand would hold the item. Sneaking it
+			// only comes down with the crouched head (not forward with it), so the character stays in view.
+			CameraFrame standing = frames.body;
+			if (state.sneaking) {
+				standing = MakeCameraFrame(root->world.translate + NiPoint3{ 0.0f, 0.0f, state.eyeHeight }, 0.0f, player->data.angle.z);
+				standing.eye += standing.forward * (kEyeForward * scale);
+			}
+			const NiPoint3 camera = standing.ToWorld(NiPoint3{ settings.cameraRight, -settings.cameraBack, settings.cameraUp } * scale);
+			const NiPoint3 hand = standing.ToWorld(NiPoint3{ settings.bodyHoldRight, settings.bodyHoldForward, settings.bodyHoldUp } * scale);
+			const NiPoint3 look = hand + standing.up * (settings.holdHeight * scale);  // the item floats there
+			const NiPoint3 direction = Normalized(look - camera, standing.forward);
 			frames.view = MakeCameraFrame(camera, std::asin(std::clamp(-direction.z, -1.0f, 1.0f)), std::atan2(direction.x, direction.y));
 			return frames;
 		}
@@ -808,6 +907,13 @@ namespace Inspect
 			state.bodyScale = root->world.scale > 0.0f ? root->world.scale : 1.0f;
 			const auto head = root->GetObjectByName("NPC Head [Head]");
 			state.eyeHeight = head ? head->world.translate.z - root->world.translate.z + kEyeAboveHead * state.bodyScale : kEyeHeight * state.bodyScale;
+			// sneaking, the body leans forward and the head is well in front of the feet: the hand is held from there
+			state.sneaking = Player()->IsSneaking();
+			state.eyeForward = kEyeForward;
+			if (state.sneaking && head) {
+				const auto facing = MakeCameraFrame(root->world.translate, 0.0f, Player()->data.angle.z);
+				state.eyeForward += (head->world.translate - root->world.translate).Dot(facing.forward) / state.bodyScale;
+			}
 			const auto start = GameCamera();
 			state.cameraStart = start ? start->translate : camera->world.translate;
 			state.cameraStartAxes = CameraAxes(start ? start->rotate : camera->world.rotate);
@@ -821,7 +927,8 @@ namespace Inspect
 				Settings::Get().standStill && !player->IsSneaking() && !player->AsActorState()->IsWeaponDrawn()) {
 				player->NotifyAnimationGraph("IdleForceDefaultState");
 			}
-			logs::info("Staying in 3rd person (eyes {:.1f} above the feet, body scale {:.2f})", state.eyeHeight, state.bodyScale);
+			logs::info("Staying in 3rd person (eyes {:.1f} above the feet, {:.1f} in front{}, body scale {:.2f})", state.eyeHeight,
+				state.eyeForward * state.bodyScale, state.sneaking ? ", sneaking" : "", state.bodyScale);
 			return true;
 		}
 
@@ -999,6 +1106,8 @@ namespace Inspect
 		{
 			Telekinesis::Stop();
 			ArmPose::Release();
+			HeadLook::Release();
+			state.headWeight = 0.0f;
 			BodyArm::Restore();
 			if (state.hiddenWeapon) {
 				state.hiddenWeapon->SetAppCulled(false);
@@ -1100,9 +1209,10 @@ namespace Inspect
 			return trigger && trigger->value != 0.0f;
 		}
 
-		bool Begin(RE::PlayerCharacter* a_player, RE::TESObjectREFR* a_ref, std::int32_t a_count, bool a_arg3, bool a_playSound)
+		// a_forSale: Purchaseable Store-Display-Items would have asked to buy it; that happens when it goes into the backpack
+		bool Begin(RE::PlayerCharacter* a_player, RE::TESObjectREFR* a_ref, std::int32_t a_count, bool a_arg3, bool a_playSound, bool a_forSale)
 		{
-			if (!CanInspect(a_player, a_ref)) {
+			if (!CanInspect(a_player, a_ref, a_forSale)) {
 				return false;
 			}
 			const auto model = a_ref->Get3D();
@@ -1120,8 +1230,11 @@ namespace Inspect
 			state.playSound = a_playSound;
 			state.name = a_ref->GetDisplayFullName() ? a_ref->GetDisplayFullName() : "";
 			state.worldModel.reset(model);
-			logs::info("Inspecting {} ({:08X}, x{}), size {:.1f}, scale {:.2f}", state.name, a_ref->GetFormID(), a_count, state.radius, state.scale);
-			state.animationWait = PickupAnimationWait();
+			state.forSale = a_forSale;
+			logs::info("Inspecting {} ({:08X}, x{}{}), size {:.1f}, scale {:.2f}", state.name, a_ref->GetFormID(), a_count, a_forSale ? ", for sale" : "",
+				state.radius, state.scale);
+			// an item for sale skipped the activation perks, Immersive Interactions' pickup animation among them
+			state.animationWait = a_forSale ? 0.0f : PickupAnimationWait();
 			if (state.animationWait > 0.0f) {
 				// the item lies there until the other mod's pickup animation is done; the player stands still meanwhile
 				DisableControls();
@@ -1515,10 +1628,61 @@ namespace Inspect
 			static inline REL::Relocation<decltype(thunk)> func;
 		};
 
+		// ---- Purchaseable Store-Display-Items: items for sale ----
+
+		// the item for sale whose activation skipped the store's buy: its pickup (right after) goes to the hand
+		RE::ObjectRefHandle forSaleRef;
+
+		// The player activates the item under the crosshair: if the store would ask to buy it, the activation perks are
+		// skipped (the store's buy box with them), so the game's own activation picks it up into the hand
+		bool TakeForSale(const RE::ObjectRefHandle& a_target)
+		{
+			forSaleRef = {};
+			const auto& settings = Settings::Get();
+			const auto  player = Player();
+			const auto  ref = a_target.get();
+			if (!settings.enabled || !settings.buyStoreItems || Active() || !player || !ref || !StoreDisplay::ForSale(ref.get()) ||
+				!CanInspect(player, ref.get(), true)) {
+				return false;
+			}
+			forSaleRef = a_target;
+			logs::info("{:08X} is for sale: it goes to the hand, the store asks to buy it when it goes into the backpack", ref->GetFormID());
+			return true;
+		}
+
+		// what the player has of an item
+		std::int32_t ItemCount(RE::TESBoundObject* a_object)
+		{
+			const auto counts = Player()->GetInventoryCounts([&](RE::TESBoundObject& a_item) { return &a_item == a_object; });
+			const auto found = counts.find(a_object);
+			return found != counts.end() ? found->second : 0;
+		}
+
+		// PlayerCharacter::ActivatePickRef (AE 40548) asks the activation perks (AE 41003) first: true = a perk took the
+		// activation (the store's buy box), false = the game's own activation follows
+		struct ActivationPerks
+		{
+			static bool thunk(const RE::ObjectRefHandle* a_target)
+			{
+				if (a_target && TakeForSale(*a_target)) {
+					return false;
+				}
+				return func(a_target);
+			}
+			static inline REL::Relocation<decltype(thunk)> func;
+		};
+
 		void PickUpObject::thunk(RE::PlayerCharacter* a_this, RE::TESObjectREFR* a_object, std::int32_t a_count, bool a_arg3, bool a_playSound)
 		{
-			if (a_this == Player() && Begin(a_this, a_object, a_count, a_arg3, a_playSound)) {
+			const bool forSale = forSaleRef && a_object && forSaleRef == a_object->GetHandle();
+			forSaleRef = {};
+			if (a_this == Player() && Begin(a_this, a_object, a_count, a_arg3, a_playSound, forSale)) {
 				return;  // picked up later, when it goes into the backpack
+			}
+			if (forSale) {
+				// never taken for free: the store's own buy, as if we hadn't been here
+				StoreDisplay::Buy(a_object, [] {});
+				return;
 			}
 			func(a_this, a_object, a_count, a_arg3, a_playSound);
 		}
@@ -1601,8 +1765,12 @@ namespace Inspect
 		void UpdateFingers(float a_delta)
 		{
 			std::array<float, 5> target{};
-			if (state.thirdPerson && !state.weapon && (state.phase == Phase::kStow || state.phase == Phase::kReturn)) {
-				target = kPocketFist;  // the hand closes around the item on its way to the pocket (and opens with the arm's animation)
+			// 3rd person, put in the backpack: the hand closes into a fist around the item as soon as it comes down onto
+			// the palm, all the way to the pocket (and opens with the arm's animation)
+			const bool fist = state.thirdPerson && !state.weapon &&
+			                  (state.phase == Phase::kStow || state.phase == Phase::kReturn || (state.phase == Phase::kSettle && state.afterSettle == Phase::kStow));
+			if (fist) {
+				target = kPocketFist;
 			} else if (state.settled || state.phase == Phase::kSettle) {
 				target.fill(kCupCurl);  // closing around the item that comes down onto the palm
 			} else if (state.telekinesis) {
@@ -1620,7 +1788,7 @@ namespace Inspect
 			} else {
 				target.fill(kCurl);
 			}
-			const float follow = std::min(1.0f, a_delta * kFingerFollow);
+			const float follow = std::min(1.0f, a_delta * (fist ? kFistFollow : kFingerFollow));
 			for (int i = 0; i < 5; ++i) {
 				state.fingers[i] += (target[i] - state.fingers[i]) * follow;
 			}
@@ -1653,9 +1821,88 @@ namespace Inspect
 
 		float ItemSize();
 
+		// 3rd person: phases in which the head looks at the item in the hand. Put in the backpack, the head lets go
+		// right away and turns back while the hand goes to the pocket.
+		bool LooksAtItem()
+		{
+			switch (state.phase) {
+			case Phase::kRaise:
+			case Phase::kHold:
+			case Phase::kBuying:
+			case Phase::kPutBack:
+				return true;
+			case Phase::kSettle:
+				return state.afterSettle != Phase::kStow;
+			case Phase::kSwitchView:
+				return !state.switched;
+			default:
+				return false;
+			}
+		}
+
 		void ClearInput()
 		{
 			state.mouseX = state.mouseY = state.wheel = 0.0f;
+		}
+
+		// the hand stops holding: the item goes into the backpack (kStow) or back where it was (kPutBack)
+		void LeaveHold(Phase a_next)
+		{
+			if (a_next == Phase::kStow) {
+				WakeWorldForTheft();
+			}
+			StopLooking(false);
+			state.inHandSet = false;
+			if (a_next == Phase::kPutBack && state.source == Source::kHarvest) {
+				// back into the plant (also when it came out of the hand), shrinking like it came
+				state.start = ItemAt(state.containerSpot, state.last.rotate, state.scale * kRiseFromScale);
+			}
+			if (state.weapon || a_next == Phase::kPutBack) {
+				// a weapon is already in the hand; put back, the item floats straight back down (telekinesis keeps it
+				// until it lies there)
+				SetPhase(a_next);
+			} else {
+				state.afterSettle = a_next;
+				SetPhase(Phase::kSettle);
+			}
+		}
+
+		// An item for sale goes into the backpack: the store's buy box first (its price, its gold to the vendor). The
+		// hand keeps holding the item until it's answered.
+		void BeginBuying()
+		{
+			const auto ref = state.ref.get();
+			const auto object = ref ? ref->GetBaseObject() : nullptr;
+			static std::uint32_t requests = 0;
+			const auto           request = ++requests;
+			state.countBefore = object ? ItemCount(object) : 0;
+			state.buyRequest = request;
+			state.buyAnswered = false;
+			StopLooking(false);
+			WorldPause::End();  // the vendor takes the gold and may say something
+			const auto answered = [request]() {
+				if (state.phase == Phase::kBuying && state.buyRequest == request) {
+					state.buyAnswered = true;
+				}
+			};
+			if (!ref || !StoreDisplay::Buy(ref.get(), answered)) {
+				logs::warn("The store can't sell it: put back");
+				LeaveHold(Phase::kPutBack);
+				return;
+			}
+			SetPhase(Phase::kBuying);
+		}
+
+		// the store's script sold it: paid, the item is the player's (and already in the inventory, or on its way)
+		bool Bought()
+		{
+			const auto player = Player();
+			const auto object = RE::TESForm::LookupByID<RE::TESBoundObject>(state.baseID);
+			if (object && ItemCount(object) > state.countBefore) {
+				return true;
+			}
+			const auto ref = state.ref.get();
+			return !ref || ref->IsDisabled() || ref->IsMarkedForDeletion() || (player && ref->GetOwner() == player->GetActorBase());
 		}
 
 		void OnPlayerUpdate(float a_delta)
@@ -1674,11 +1921,16 @@ namespace Inspect
 			const auto  ref = state.ref.get();
 			state.time += a_delta;
 			state.clock += a_delta;
+			if (state.awake >= 0.0f) {
+				state.awake += a_delta;
+			}
 			if (state.hudModePushed) {
 				HUD::KeepHoldMode();
 			}
 
-			if (!player || player->IsDead() || (state.source != Source::kInventory && !state.pickedUp && !ref)) {
+			// (an item for sale is picked up by the store's script while it's being bought)
+			const bool beingBought = state.phase == Phase::kBuying || state.bought;
+			if (!player || player->IsDead() || (state.source != Source::kInventory && !state.pickedUp && !beingBought && !ref)) {
 				logs::info("Inspection ended: {}", player && !player->IsDead() ? "the item is gone" : "the player died");
 				Finish();
 				return;
@@ -1791,19 +2043,23 @@ namespace Inspect
 				if (state.storeRequested || state.putBackRequested) {
 					// an inventory item has nowhere else to go than the backpack
 					const Phase next = state.storeRequested || state.source == Source::kInventory ? Phase::kStow : Phase::kPutBack;
-					StopLooking(false);
-					state.inHandSet = false;
-					if (next == Phase::kPutBack && harvest) {
-						// back into the plant (also when it came out of the hand), shrinking like it came
-						state.start = ItemAt(state.containerSpot, state.last.rotate, state.scale * kRiseFromScale);
-					}
-					if (state.weapon || next == Phase::kPutBack) {
-						// a weapon is already in the hand; put back, the item floats straight back down (telekinesis
-						// keeps it until it lies there)
-						SetPhase(next);
+					if (next == Phase::kStow && state.forSale && !state.bought) {
+						BeginBuying();
 					} else {
-						state.afterSettle = next;
-						SetPhase(Phase::kSettle);
+						LeaveHold(next);
+					}
+				}
+				break;
+			case Phase::kBuying:
+				// the buy box pauses the game: this runs again once it's answered
+				if (state.buyAnswered || state.time > kBuyTimeout) {
+					if (state.buyAnswered && Bought()) {
+						state.bought = true;
+						logs::info("Bought");
+						LeaveHold(Phase::kStow);
+					} else {
+						logs::info("{}: put back", state.buyAnswered ? "Not bought" : "The store didn't answer");
+						LeaveHold(Phase::kPutBack);
 					}
 				}
 				break;
@@ -1827,10 +2083,12 @@ namespace Inspect
 				}
 				break;
 			case Phase::kStow:
-				if (!state.pickedUp && state.time >= settings.stowTime * kStowPickUpAt) {
+				if (!state.pickedUp && state.time >= settings.stowTime * kStowPickUpAt && TheftSeen()) {
 					state.pickedUp = true;
 					DetachItem();
-					if (world) {
+					if (world && state.bought) {
+						Seen::Add(state.baseID);  // the store's script already put it in the inventory
+					} else if (world) {
 						auto hidden = state.worldModel;
 						state.worldModel.reset();
 						PickUpNow(state.ref, state.count, state.arg3, state.playSound, hidden);
@@ -1848,7 +2106,7 @@ namespace Inspect
 					PlayTelekinesisSound(player->Get3D(false));
 					logs::info("Put in the backpack");
 				}
-				if (state.time >= settings.stowTime) {
+				if (state.time >= settings.stowTime && state.pickedUp) {
 					SetPhase(Phase::kReturn);
 					state.cameraIn = false;  // 3rd person: the camera flies back while the empty hand comes back
 				}
@@ -1883,6 +2141,10 @@ namespace Inspect
 			UpdateLookReturn(a_delta);
 			UpdateFingers(a_delta);
 			if (state.thirdPerson) {
+				// the head turns to the item while it's in the hand (and follows it back down when put back)
+				const bool  look = settings.headLook && state.lookTargetSet && LooksAtItem();
+				const float follow = std::min(1.0f, a_delta * (look ? kHeadFollow : kHeadReturn));
+				state.headWeight += ((look ? 1.0f : 0.0f) - state.headWeight) * follow;
 				const float step = a_delta / std::max(settings.cameraTime, 0.05f);
 				state.cameraBlend = std::clamp(state.cameraBlend + (state.cameraIn ? step : -step), 0.0f, 1.0f);
 				// the body settles into standing, then its animation slows to a stop; it goes on when the camera flies back
@@ -1915,8 +2177,18 @@ namespace Inspect
 		constexpr float kFistTilt = 18.0f;                    // degrees around -Y: the index finger's end towards the fingers
 		constexpr float kFistTurn = -4.0f;                    // degrees around +Z: the index finger's end towards the palm
 
-		// the blade's direction in the model (from the grip towards the model's middle)
-		NiPoint3 BladeInModel() { return state.center.Length() > 1.0f ? state.center : NiPoint3{ 0.0f, 1.0f, 0.0f }; }
+		// The blade's direction in the model (from the grip towards the model's middle). Staves reach out both ways from
+		// the grip and their middle is often below it (vanilla staff01: 21 units towards the butt), which turned the hand
+		// upside down: their shaft is the model's +Y towards the head, like the blades of swords. (Bows keep their middle:
+		// without a bow skeleton it tells the string side.)
+		NiPoint3 BladeInModel()
+		{
+			const bool behindGrip = !state.bow && state.center.y < 1.0f;
+			if (state.staff || behindGrip || state.center.Length() <= 1.0f) {
+				return { 0.0f, 1.0f, 0.0f };
+			}
+			return state.center;
+		}
 
 		// The fist around the WEAPON node's handle (as tuned), then the player's own fit from the settings (models whose
 		// grip isn't where the game expects it, e.g. held at the crossguard): tilted in the fist, turned around the blade,
@@ -2119,6 +2391,21 @@ namespace Inspect
 			return result;
 		}
 
+		// 3rd person: the pocket at the right hip and the point on the way down to it (eye space, unscaled). Standing
+		// these are fixed; sneaking, the crouched hip is found from the right thigh bone.
+		std::pair<NiPoint3, NiPoint3> PocketPoints(const CameraFrame& a_body, float a_scale)
+		{
+			const auto root = state.sneaking ? BodyRoot() : nullptr;
+			const auto pelvis = root ? root->GetObjectByName("NPC Pelvis [Pelv]") : nullptr;
+			const auto thigh = pelvis ? pelvis->GetObjectByName("NPC R Thigh [RThg]") : nullptr;
+			if (!thigh || a_scale <= 0.0f) {
+				return { kPocket, kPocketVia };
+			}
+			const NiPoint3 fromEye = (thigh->world.translate - a_body.eye) / a_scale;
+			const NiPoint3 pocket = NiPoint3{ fromEye.Dot(a_body.right), fromEye.Dot(a_body.forward), fromEye.Dot(a_body.up) } + kPocketFromThigh;
+			return { pocket, pocket + (kPocketVia - kPocket) };
+		}
+
 		// Poses the arm of a_root for this frame and places the item in the hand.
 		// a_body: what the hand is held from (1st person: the camera; 3rd person: the eyes, facing like the player).
 		// a_view: what the item turns in and a weapon leans in (the camera; 3rd person: where it flies to).
@@ -2132,7 +2419,7 @@ namespace Inspect
 			const float    sway = 0.35f * std::sin(state.clock * 1.9f);
 			// weapons have their own hold position in 1st person (they're held lower and further out)
 			const bool     bodyWeapon = state.thirdPerson && state.weapon && !state.bow;
-			const NiPoint3 bodyHold{ settings.bodyHoldRight, settings.bodyHoldForward, settings.bodyHoldUp };
+			const NiPoint3 bodyHold = BodyHold();
 			const NiPoint3 holdAt = bodyWeapon        ? bodyHold + kBodyWeaponOffset :
 			                        state.thirdPerson ? bodyHold :
 			                        state.bow         ? NiPoint3{ settings.bowRight, settings.bowForward, settings.bowUp } :
@@ -2171,6 +2458,12 @@ namespace Inspect
 				.hinge = state.thirdPerson,
 				.open = state.thirdPerson && !state.weapon ? 1.0f : 0.0f  // 3rd person: an open palm under the floating item
 			};
+			if (state.thirdPerson && state.sneaking) {
+				// the crouched arm: the elbow swung around the forward axis (out) and the right axis (back), bent more
+				goal.pole = AxisAngle(a_body.right, -kSneakElbowBack * kDegrees) * (AxisAngle(a_body.forward, -kSneakElbowOut * kDegrees) * goal.pole);
+				goal.elbowBend = kSneakElbowBend * kDegrees;
+				goal.wristBend = kSneakWristBend * kDegrees;
+			}
 			std::optional<ArmPose::HandFrame> handFrame;
 			if (state.weapon) {
 				handFrame = ArmPose::Frame(a_root);
@@ -2200,8 +2493,9 @@ namespace Inspect
 					const NiPoint3  holdLocal{ holdAt.x, holdAt.y + state.distanceOffset, holdAt.z };
 					const NiPoint3  start = at(holdLocal);
 					const NiPoint3  lift = at(holdLocal + kPocketLift);
-					const NiPoint3  via = at(kPocketVia);
-					const NiPoint3  end = at(kPocket);
+					const auto [pocketAt, pocketVia] = PocketPoints(a_body, a_scale);
+					const NiPoint3  via = at(pocketVia);
+					const NiPoint3  end = at(pocketAt);
 					const float     u = 1.0f - s;
 					goal.wrist = start * (u * u * u) + lift * (3.0f * u * u * s) + via * (3.0f * u * s * s) + end * (s * s * s);
 					const NiMatrix3 hold = AlignAxes({ 1, 0, 0 }, { 0, 1, 0 }, holdFingers, holdPalm);
@@ -2272,6 +2566,7 @@ namespace Inspect
 				PlaceItem(fromRef ? Blend(state.start, HeldItem(*hand, a_view), Smooth(state.time / settings.raiseTime)) : HeldItem(*hand, a_view));
 				break;
 			case Phase::kHold:
+			case Phase::kBuying:
 			case Phase::kSwitchView:
 				PlaceItem(HeldItem(*hand, a_view));
 				break;
@@ -2348,11 +2643,25 @@ namespace Inspect
 			}
 		}
 
+		// 3rd person: the head turns to the item by the eased weight (after the arm placed the item for this frame)
+		void LookAtItem()
+		{
+			const auto root = BodyRoot();
+			if (!state.thirdPerson || !root || !state.lookTargetSet) {
+				return;
+			}
+			const float heading = Player()->data.angle.z;
+			HeadLook::Apply(root, state.lookTarget, { std::sin(heading), std::cos(heading), 0.0f }, Smooth(state.headWeight));
+		}
+
 		// runs right after the player's skeletons were animated and updated, before anything else reads the bones
 		void OnPlayerSkeletons()
 		{
 			if (PosingBody()) {
 				PoseBodyArm();
+				LookAtItem();
+			} else if (state.thirdPerson && state.phase == Phase::kCameraBack) {
+				LookAtItem();  // whatever is left of the turn eases out
 			}
 		}
 
@@ -2365,6 +2674,7 @@ namespace Inspect
 			}
 			if (!bodyHook && PosingBody()) {
 				PoseBodyArm();  // fallback when the skeleton update call wasn't found: physics may read the bones first
+				LookAtItem();
 			}
 			const auto frames = ThirdPersonFrames();
 			if (!frames) {
@@ -2443,6 +2753,24 @@ namespace Inspect
 			}
 			static inline REL::Relocation<decltype(thunk)> func;
 		};
+
+		// PlayerCharacter::ActivatePickRef (AE 40548) +0xE3: the call of the activation perks (AE 41003). Found in 1.7.104,
+		// the bytes are checked before patching.
+		void InstallActivationPerksHook()
+		{
+			if (!REL::Module::IsAE()) {
+				logs::warn("Items for sale (Purchaseable Store-Display-Items) are only supported on Skyrim AE");
+				return;
+			}
+			const auto address = REL::ID(40548).address() + 0xE3;
+			const auto destination = address + 5 + *reinterpret_cast<const std::int32_t*>(address + 1);
+			if (*reinterpret_cast<const std::uint8_t*>(address) != 0xE8 || destination != REL::ID(41003).address()) {
+				logs::warn("Activation perks call not found: items for sale are bought the store's usual way");
+				return;
+			}
+			ActivationPerks::func = SKSE::GetTrampoline().write_call<5>(address, ActivationPerks::thunk);
+			logs::info("Hooked the activation perks call");
+		}
 
 		void InstallPlayerSkeletonsHook()
 		{
@@ -2609,6 +2937,7 @@ namespace Inspect
 		logs::info("Installed hooks: PlayerCharacter::Update, PlayerCharacter::UpdateAnimation, PlayerCharacter::PickUpObject, FirstPersonState::Update, ThirdPersonState::Update, TESFlora / TESObjectTREE::Activate{}",
 			bodyHook ? ", player skeleton update" : "");
 		InstallItemZoomHook();
+		InstallActivationPerksHook();
 		ContainerLid::Install();
 	}
 
@@ -2624,8 +2953,10 @@ namespace Inspect
 	{
 		// the 3D is reloaded with the game: never touch the old nodes, just let go of them
 		ArmPose::Forget();
+		HeadLook::Forget();
 		ContainerLid::Forget();
 		searchedContainer = 0;
+		forSaleRef = {};
 		BodyArm::Forget();
 		Telekinesis::Forget();
 		if (!Active()) {

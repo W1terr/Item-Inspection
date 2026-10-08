@@ -6,7 +6,8 @@ When you take an item from the world it doesn't go straight to your inventory:
 
 1. Your right hand brings the item up. In 1st person you see it from your eyes; in 3rd person the camera flies in over
    your right shoulder and your character holds it (or, if you turn that off, the camera switches to 1st person with a
-   short fade). In 3rd person your character goes back to standing and holds still while looking at the item.
+   short fade). In 3rd person your character goes back to standing (or stays crouched when sneaking), holds still and
+   turns their head to look at the item.
 2. Move the mouse (or the right stick) to turn the item and look at it from every side. The mouse wheel brings it closer
    or moves it farther. Hold the right mouse button (gamepad RT) to look around; the hand and the item stay put.
 3. Press **E** (gamepad **A**) to put it in your backpack: the item comes down onto your palm, the hand goes down and
@@ -17,7 +18,7 @@ When you take an item from the world it doesn't go straight to your inventory:
 Afterwards the camera goes back to where it was (or stays in the view you switched to with F).
 
 - Small items float over your open hand with the Telekinesis spell's hand effect; your fingers move while you turn them.
-- Weapons are held by the grip, bows like an archer holds them (string towards you). The mouse turns the hand.
+- Weapons and staves are held by the grip, bows like an archer holds them (string towards you). The mouse turns the hand.
   If a weapon sits wrong in the fist (e.g. held at the crossguard), sliders move the hand along the handle and turn /
   tilt the weapon in it, for 1st and 3rd person separately.
 - When the item reaches your hand you hear its own pickup sound.
@@ -46,6 +47,12 @@ to take it, or press **R** and it goes back into the container. "Take All" and "
 Bodies can be left out ("Also from bodies"), or it can work only for real chests ("Only big chests": wooden,
 noble, Dwemer, Falmer and ruins chests; barrels, sacks, urns, drawers and wardrobes as usual).
 
+With [Purchaseable Store-Display-Items](https://www.nexusmods.com/skyrimspecialedition/mods/36005) an item for sale
+in a shop goes to your hand like any other ("Buy" in the key hint). Putting it in the backpack asks you to buy it, with
+that mod's own message box and price; buy it and it goes into your backpack, don't and it's put back where it was.
+Taverns, homes and stealing work as that mod does. Turn off "Buy store items when you put them in the backpack" to have
+it ask right away as usual (Skyrim AE only).
+
 ## Requirements
 
 - Skyrim SE / AE with [SKSE](https://skse.silverlock.org/) (built against CommonLibSSE-NG, tested on 1.7.104)
@@ -59,6 +66,8 @@ noble, Dwemer, Falmer and ruins chests; barrels, sacks, urns, drawers and wardro
 - [CommonLibSSE-NG](https://github.com/alandtse/CommonLibVR/tree/ng) (MIT) and the
   [SKSE Menu Framework](https://github.com/QTR-Modding/SKSE-Menu-Framework-3-API) API (LGPL-2.1).
 - The [QuickLoot IE](https://github.com/MissCorruption/QuickLootIE) modder API (QuickLootAPI.h, MIT).
+- With [Purchaseable Store-Display-Items](https://www.nexusmods.com/skyrimspecialedition/mods/36005) installed, items
+  for sale are bought through its own script; nothing of it is included.
 - The telekinesis hand effect, light and grab sound are the vanilla Telekinesis spell's (Skyrim.esm); the fist that
   holds weapons starts from the game's 1st person one-handed idle. Both are used from the game while it runs.
 

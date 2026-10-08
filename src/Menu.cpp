@@ -5,6 +5,7 @@
 #include "QuickLoot.h"
 #include "Seen.h"
 #include "Settings.h"
+#include "StoreDisplay.h"
 
 // third party header: keep its warnings out of our build
 #pragma warning(push, 0)
@@ -129,6 +130,15 @@ namespace Menu
 			Checkbox("Look at items you steal too", v.inspectStolen,
 				"On: stolen items go to your hand first as well. It only counts as stealing when you put the item\n"
 				"in your backpack; putting it back is no crime.\nOff: stealing works like in the normal game.");
+			Checkbox("Buy store items when you put them in the backpack", v.buyStoreItems,
+				"With Purchaseable Store-Display-Items: an item for sale goes to your hand like any other.\n"
+				"Putting it in the backpack asks you to buy it, with that mod's own message box and price;\n"
+				"if you don't buy it, it is put back.\nOff: that mod asks right away, as usual.");
+			if (v.buyStoreItems && !StoreDisplay::Installed()) {
+				ImGui::Indent();
+				ImGui::TextDisabled("%s", T("Purchaseable Store-Display-Items isn't installed: this has no effect."));
+				ImGui::Unindent();
+			}
 			Checkbox("Telekinesis", v.telekinesis,
 				"The item floats over your hand with the Telekinesis spell's hand effect,\nand your fingers move while you turn it.");
 			if (v.telekinesis) {
@@ -262,6 +272,7 @@ namespace Menu
 				Checkbox("Stand still while holding", v.standStill,
 					"Your character goes back to standing and holds still while looking at the item,\n"
 					"instead of playing idle animations.");
+				Checkbox("Look at the item", v.headLook, "Your character's head turns to look at the item in the hand.");
 				Slider("Hand right (3rd person)", v.bodyHoldRight, Settings::kHoldRight, "%.1f", "Game units to the right of your eyes.");
 				Slider("Hand forward (3rd person)", v.bodyHoldForward, Settings::kHoldForward, "%.1f", "Game units in front of your eyes.");
 				Slider("Hand up (3rd person)", v.bodyHoldUp, Settings::kBodyHoldUp, "%.1f", "Game units above (negative: below) your eyes.");

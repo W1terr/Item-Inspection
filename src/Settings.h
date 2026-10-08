@@ -21,6 +21,7 @@ namespace Settings
 		bool skipWeapons{ false };      // weapons (bows too) go straight into the inventory
 		bool skipArmor{ false };        // armor, clothes and jewelry go straight into the inventory
 		bool skipHarvest{ false };      // plants: their ingredient goes straight into the inventory (normal harvest)
+		bool buyStoreItems{ true };     // Purchaseable Store-Display-Items: items for sale go to the hand, bought when put in the backpack
 		bool showHint{ true };          // "[E] Put in backpack  [R] Put back" on screen while holding
 		bool worldWaits{ true };        // nobody talks to you, attacks or hurts you while you hold an item (AI paused)
 		bool fadeTransition{ true };    // short fade to black when the camera switches between 3rd and 1st person
@@ -88,6 +89,7 @@ namespace Settings
 		// mod is loaded; its "well timed" option off adds kLateAnimationWait)
 		float animationWait{ 0.8f };
 		bool  standStill{ true };  // the body's animation (idles too) settles and stops while the item is held
+		bool  headLook{ true };    // the head turns to look at the item in the hand
 		float bodyItemScale{ 0.7f };  // items (not weapons) are shown this much smaller in 3rd person
 		float bodyItemRight{ 7.2f };  // item offset from its place over the palm, as the camera sees it
 		float bodyItemForward{ -0.3f };

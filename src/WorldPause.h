@@ -6,5 +6,6 @@ namespace WorldPause
 {
 	void Begin();
 	void End();
+	bool Active();
 	void Reset();  // game load: put the switches back
 }

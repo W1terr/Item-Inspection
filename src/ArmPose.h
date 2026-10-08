@@ -26,6 +26,8 @@ namespace ArmPose
 		                                           // limits: for an arm posed far from its animation (3rd person, hanging at the side)
 		float                open{ 0.0f };         // fingers straightened towards the hand mesh's open hand (its bind pose), 0..1
 		float                wristBend{ 0.6f };    // hinged arm: radians the wrist may bend away from its animation
+		float                elbowBend{ 0.0f };    // radians the elbow bends more than the wrist target needs (the hand
+		                                           // comes in towards the shoulder along the same line)
 	};
 
 	struct Hand

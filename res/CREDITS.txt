@@ -10,6 +10,8 @@ https://github.com/mwilsnd/SkyrimSE-SmoothCam).
 Items taken from containers come through QuickLoot IE's modder API (QuickLootAPI.h, MIT,
 https://github.com/MissCorruption/QuickLootIE); the searching animation is the game's own
 (IdleSearchingChest).
+Items for sale are bought through Purchaseable Store-Display-Items' own script (its buy perk's fragment) when
+that mod is installed; nothing of it is included.
 
 Needs SKSE by the SKSE team and Address Library for SKSE Plugins by meh321.
 

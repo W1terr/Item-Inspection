@@ -99,6 +99,11 @@ namespace WorldPause
 		logs::info("World goes on");
 	}
 
+	bool Active()
+	{
+		return active;
+	}
+
 	void Reset()
 	{
 		End();

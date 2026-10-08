@@ -619,7 +619,15 @@ namespace ArmPose
 		const float    upperLength = (fore.translate - shoulder).Length();
 		const float    foreLength = (hand.translate - fore.translate).Length();
 		NiPoint3       toTarget = a_goal.wrist - shoulder;
-		const float    reach = std::clamp(toTarget.Length(), std::abs(upperLength - foreLength) + 0.01f, (upperLength + foreLength) * 0.999f);
+		const float    minReach = std::abs(upperLength - foreLength) + 0.01f;
+		float          reach = std::clamp(toTarget.Length(), minReach, (upperLength + foreLength) * 0.999f);
+		if (a_goal.elbowBend > 0.0f) {
+			// the elbow's inside angle closed by the extra bend (law of cosines), the reach that gives
+			const float inside = std::acos(std::clamp(
+				(upperLength * upperLength + foreLength * foreLength - reach * reach) / (2.0f * upperLength * foreLength), -1.0f, 1.0f));
+			const float bent = std::max(inside - a_goal.elbowBend, 0.35f);
+			reach = std::max(std::sqrt(upperLength * upperLength + foreLength * foreLength - 2.0f * upperLength * foreLength * std::cos(bent)), minReach);
+		}
 		const NiPoint3 direction = Normalized(toTarget, Normalized(hand.translate - shoulder));
 		const NiPoint3 wrist = shoulder + direction * reach;
 
