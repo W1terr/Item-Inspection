@@ -515,6 +515,65 @@ namespace Inspect
 			}
 		}
 
+		// the smallest sphere around both
+		RE::NiBound Merge(const RE::NiBound& a_bound, const RE::NiBound& a_other)
+		{
+			const float distance = a_bound.center.GetDistance(a_other.center);
+			if (distance + a_other.radius <= a_bound.radius) {
+				return a_bound;
+			}
+			if (distance + a_bound.radius <= a_other.radius) {
+				return a_other;
+			}
+			RE::NiBound merged;
+			merged.radius = (distance + a_bound.radius + a_other.radius) * 0.5f;
+			merged.center = a_bound.center + (a_other.center - a_bound.center) * ((merged.radius - a_bound.radius) / distance);
+			return merged;
+		}
+
+		// the meshes' bounds, without what hangs from billboard nodes (or is hidden); counts the billboards left out
+		void AddMeshBounds(RE::NiAVObject* a_object, std::optional<RE::NiBound>& a_bound, int& a_billboards)
+		{
+			if (const auto geometry = a_object->AsGeometry()) {
+				if (geometry->worldBound.radius > 0.0f) {
+					a_bound = a_bound ? Merge(*a_bound, geometry->worldBound) : geometry->worldBound;
+				}
+				return;
+			}
+			const auto node = a_object->AsNode();
+			if (!node) {
+				return;
+			}
+			if (netimmerse_cast<RE::NiBillboardNode*>(node)) {
+				++a_billboards;
+				return;
+			}
+			for (const auto& child : node->GetChildren()) {
+				if (child && !child->GetAppCulled()) {
+					AddMeshBounds(child.get(), a_bound, a_billboards);
+				}
+			}
+		}
+
+		// The item's bounding sphere without its billboards: those always turn to the camera, so meshes under them (ENB
+		// particle lights on lanterns, potions, torches...) shift the game's bound and make it far too big, and the item
+		// was shrunk to a fraction in the hand. ENB Light Inventory Fix does the same for the inventory preview; this
+		// doesn't depend on it. Without billboards (or meshes) the game's own bound.
+		RE::NiBound ItemBound(RE::NiAVObject* a_model)
+		{
+			std::optional<RE::NiBound> bound;
+			int                        billboards = 0;
+			AddMeshBounds(a_model, bound, billboards);
+			if (billboards == 0 || !bound) {
+				return a_model->worldBound;
+			}
+			logs::info("Left {} billboard node(s) (ENB lights?) out of the item's size: radius {:.1f} instead of {:.1f}", billboards, bound->radius,
+				a_model->worldBound.radius);
+			return *bound;
+		}
+
+		constexpr float kMaxItemSize = 20.0f;  // radius: bigger items (shields, armor...) are shown smaller to fit in the hand
+
 		// a_keepScale: the model is shown at its real size (world reference), else at scale 1 (inventory preview, which is scaled to fit)
 		bool MakeItem(RE::NiAVObject* a_model, bool a_keepScale, bool a_limitSize = true)
 		{
@@ -534,9 +593,10 @@ namespace Inspect
 			state.start = a_model->world;
 			const float worldScale = a_model->world.scale > 0.0f ? a_model->world.scale : 1.0f;
 			const float realScale = a_keepScale ? worldScale : 1.0f;
-			const float radius = std::max(a_model->worldBound.radius / worldScale * realScale, 1.0f);
-			state.center = a_model->world.rotate.Transpose() * (a_model->worldBound.center - a_model->world.translate) / worldScale;
-			const float maxSize = a_limitSize ? Settings::Get().maxItemSize : radius;
+			const auto  bound = ItemBound(a_model);
+			const float radius = std::max(bound.radius / worldScale * realScale, 1.0f);
+			state.center = a_model->world.rotate.Transpose() * (bound.center - a_model->world.translate) / worldScale;
+			const float maxSize = a_limitSize ? kMaxItemSize : radius;
 			state.scale = realScale * std::min(1.0f, maxSize / radius);
 			state.radius = std::min(radius, maxSize);
 			return true;
@@ -2499,7 +2559,14 @@ namespace Inspect
 		}
 
 		// items (not weapons) are shown smaller in 3rd person, where the camera is close to them
-		float ItemSize() { return state.thirdPerson && !state.weapon ? Settings::Get().bodyItemScale : 1.0f; }
+		float ItemSize()
+		{
+			if (state.weapon) {
+				return 1.0f;
+			}
+			const auto& settings = Settings::Get();
+			return state.thirdPerson ? settings.bodyItemScale : settings.itemScale;
+		}
 
 		// lying on the palm (after it came down to put it away)
 		NiTransform RestingItem(const ArmPose::Hand& a_hand, const CameraFrame& a_frame)

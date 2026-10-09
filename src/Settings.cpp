@@ -83,7 +83,7 @@ namespace Settings
 			a_func("Hold", "fHandTurn", a_values.handTurn, kHandAngle);
 			a_func("Hold", "fHandTilt", a_values.handTilt, kHandAngle);
 			a_func("Hold", "fHandRoll", a_values.handRoll, kHandAngle);
-			a_func("Hold", "fMaxItemSize", a_values.maxItemSize, kMaxItemSize);
+			a_func("Hold", "fItemSize", a_values.itemScale, kItemScale);
 			a_func("Weapons", "fWeaponRight", a_values.weaponRight, kHoldRight);
 			a_func("Weapons", "fWeaponForward", a_values.weaponForward, kHoldForward);
 			a_func("Weapons", "fWeaponUp", a_values.weaponUp, kHoldUp);
@@ -178,9 +178,9 @@ namespace Settings
 	void Load()
 	{
 		ForEach(values, Reader{});
-		logs::info("Settings: enabled {}, always {}, inventory {}, keys store {} / {} put back {} / {}, hold ({}, {}, {}), max size {}",
+		logs::info("Settings: enabled {}, always {}, inventory {}, keys store {} / {} put back {} / {}, hold ({}, {}, {}), item size {}",
 			values.enabled, values.alwaysInspect, values.inventoryInspect, values.storeKey, values.storeGamepadKey, values.putBackKey,
-			values.putBackGamepadKey, values.holdRight, values.holdForward, values.holdUp, values.maxItemSize);
+			values.putBackGamepadKey, values.holdRight, values.holdForward, values.holdUp, values.itemScale);
 	}
 
 	void Save()

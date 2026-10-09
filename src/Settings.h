@@ -56,7 +56,7 @@ namespace Settings
 		float handTurn{ 2.0f };      // degrees: the hand turned right (+) / left around the up axis
 		float handTilt{ 14.0f };      // degrees: fingers tilted up (+) / down
 		float handRoll{ -26.0f };    // degrees: palm rolled around the fingers
-		float maxItemSize{ 20.0f };  // radius; bigger items are shown smaller
+		float itemScale{ 1.0f };     // items (not weapons) are shown this much bigger / smaller in 1st person
 		// [Weapons] held by the grip: where the hand is (eye space) and how the blade leans, degrees
 		float weaponRight{ 17.6f };
 		float weaponForward{ 31.4f };
@@ -121,7 +121,6 @@ namespace Settings
 	inline constexpr Range kHoldUp{ -35.0f, 10.0f };
 	inline constexpr Range kBodyHoldUp{ -50.0f, 10.0f };
 	inline constexpr Range kItemScale{ 0.2f, 1.5f };
-	inline constexpr Range kMaxItemSize{ 2.0f, 60.0f };
 	inline constexpr Range kHoldHeight{ 0.0f, 25.0f };
 	inline constexpr Range kHandAngle{ -90.0f, 90.0f };
 	inline constexpr Range kGripSlide{ -15.0f, 15.0f };

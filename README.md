@@ -34,7 +34,8 @@ Afterwards the camera goes back to where it was (or stays in the view you switch
   harvested when you put the item in the backpack; **R** puts it back and the plant stays as it was.
 
 The arm is animated procedurally in the plugin: no animation files, no behavior patches, no plugin (ESP).
-Works with skeleton replacers such as XPMSSE, and with Improved Camera SE (1.x and 2) and SmoothCam. With
+Works with skeleton replacers such as XPMSSE, and with Improved Camera SE (1.x and 2) and SmoothCam. Items with ENB
+particle lights (billboards) keep their real size in the hand, like ENB Light Inventory Fix does for the inventory. With
 [Immersive Interactions](https://www.nexusmods.com/skyrimspecialedition/mods/47670) its pickup animation plays first
 in 3rd person, then the item comes to your hand. With
 [Dynamic Looting and Harvesting Animations](https://www.nexusmods.com/skyrimspecialedition/mods/114547) its harvest

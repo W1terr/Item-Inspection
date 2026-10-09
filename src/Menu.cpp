@@ -230,8 +230,8 @@ namespace Menu
 			Slider("Item right", v.itemRight, Settings::kItemOffset, "%.1f", "Moves the item to the right (+) or left (-) of its place over the hand.");
 			Slider("Item forward", v.itemForward, Settings::kItemOffset, "%.1f", "Moves the item away from you (+) or closer (-).");
 			Slider("Item up", v.itemUp, Settings::kItemOffset, "%.1f", "Moves the item up (+) or down (-).");
-			Slider("Largest item size", v.maxItemSize, Settings::kMaxItemSize, "%.1f",
-				"Bigger items (shields, armor...) are shown smaller so they fit in the hand. Weapons keep their size.");
+			Slider("Item size", v.itemScale, Settings::kItemScale, "%.2f",
+				"Items (not weapons) are shown this much bigger or smaller in your hand.");
 
 			Header("Hand rotation (degrees)");
 			Slider("Turn", v.handTurn, Settings::kHandAngle, "%.0f", "Turns the hand to the right (+) or left (-).");
