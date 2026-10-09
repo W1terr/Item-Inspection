@@ -83,6 +83,12 @@ namespace StoreDisplay
 		return label.c_str() && kBuyLabel == label.c_str();
 	}
 
+	bool IsActivationEntry(const RE::BGSEntryPointPerkEntry* a_entry)
+	{
+		// the entry point first: only activating an item asks these entries (in game, the data is loaded by then)
+		return a_entry->IsEntryPoint(RE::BGSEntryPoint::ENTRY_POINT::kActivate) && a_entry->perk && a_entry->perk == Perk();
+	}
+
 	bool Buy(RE::TESObjectREFR* a_ref, std::function<void()> a_done)
 	{
 		const auto perk = Perk();

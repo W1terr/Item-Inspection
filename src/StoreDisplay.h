@@ -11,6 +11,9 @@ namespace StoreDisplay
 	// PSDI offers to buy this item right now (the crosshair shows its "Buy")
 	bool ForSale(RE::TESObjectREFR* a_ref);
 
+	// one of PSDI's activation entries (the store's buy box, a tavern's "Consume"...), asked when an item is activated
+	bool IsActivationEntry(const RE::BGSEntryPointPerkEntry* a_entry);
+
 	// Runs PSDI's buy for the item: its message box with the price; bought, the item is paid for, becomes the
 	// player's and is picked up by PSDI's script. a_done runs as a game task when the script is finished, bought or not.
 	bool Buy(RE::TESObjectREFR* a_ref, std::function<void()> a_done);

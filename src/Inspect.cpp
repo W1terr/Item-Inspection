@@ -445,6 +445,9 @@ namespace Inspect
 
 		// ---- controls ----
 
+		void BlockMovementKeys(bool a_block);
+		void MovementForCamera();
+
 		void DisableControls()
 		{
 			const auto controls = RE::ControlMap::GetSingleton();
@@ -473,9 +476,7 @@ namespace Inspect
 		void RestoreControls()
 		{
 			if (state.movementOpened) {
-				if (const auto playerControls = RE::PlayerControls::GetSingleton(); playerControls && playerControls->movementHandler) {
-					playerControls->movementHandler->SetInputEventHandlingEnabled(true);
-				}
+				BlockMovementKeys(false);
 				state.movementOpened = false;
 			}
 			if (state.sneakKeyBlocked) {
@@ -662,8 +663,53 @@ namespace Inspect
 			return state.awake < 0.0f || state.awake >= kStealWake;
 		}
 
+		// Improved Camera 2 hides the 1st person arms its own way (the 1.x arm scale is handled by ArmPose) and shows
+		// them while the player's behavior variable bOffsetGPMA (Offset Movement Animation) is true: it's kept true
+		// while our hand holds the item in 1st person, then set back. Without that variable this does nothing.
+		bool cameraArmsShown{ false };
+		bool cameraArmsBefore{ false };
+
+		void ShowCameraArms(bool a_show)
+		{
+			static const RE::BSFixedString variable{ "bOffsetGPMA" };
+			const auto player = Player();
+			if (!player) {
+				return;
+			}
+			if (!a_show) {
+				if (cameraArmsShown) {
+					player->SetGraphVariableBool(variable, cameraArmsBefore);
+					cameraArmsShown = false;
+				}
+				return;
+			}
+			if (!cameraArmsShown) {
+				bool before = false;
+				const bool found = player->GetGraphVariableBool(variable, before);
+				cameraArmsBefore = found && before;
+				cameraArmsShown = true;
+				static bool logged = false;
+				if (!logged) {
+					logged = true;
+					if (found) {
+						logs::info("bOffsetGPMA found in the player's behavior: kept on while holding, so Improved Camera 2 shows the arms");
+					} else {
+						logs::info("No bOffsetGPMA in the player's behavior (no Offset Movement Animation): nothing to tell Improved Camera 2");
+					}
+				}
+			}
+			player->SetGraphVariableBool(variable, true);  // every frame, as Improved Camera asks for
+		}
+
+		// game load: the behavior graph is new
+		void ForgetCameraArms()
+		{
+			cameraArmsShown = false;
+		}
+
 		void Finish()
 		{
+			ShowCameraArms(false);
 			if (state.searching) {
 				Player()->NotifyAnimationGraph("IdleForceDefaultState");  // cut short: up from the search
 			}
@@ -948,6 +994,9 @@ namespace Inspect
 					return;
 				}
 				state.wasThirdPerson = true;
+			}
+			MovementForCamera();  // 1st person from here on
+			if (state.wasThirdPerson) {
 				if (settings.fadeTransition) {
 					// a short fade to black hides the camera jump
 					Fade::To(1.0f, settings.fadeTime);
@@ -1059,32 +1108,56 @@ namespace Inspect
 
 		RE::NiAVObject* HandMagicNode();
 
-		// Improved Camera SE: entering 3rd person with movement disabled after being in 1st person, it takes the scene
-		// for a scripted one and keeps a "fake 1st person" camera at the head (over ours: the camera sat at the hands)
+		// Improved Camera SE takes disabled movement for a scripted scene: 1.x entering 3rd person after 1st person keeps
+		// a "fake 1st person" camera at the head (over ours: the camera sat at the hands), 2 switches 1st person to 3rd
 		bool ImprovedCamera()
 		{
 			static const bool loaded = [] {
 				const bool found = REX::W32::GetModuleHandleW(L"ImprovedCameraSE.dll") != nullptr;
 				if (found) {
-					logs::info("Improved Camera SE is loaded: switching to 3rd person while holding lets it see a normal 3rd person first");
+					logs::info("Improved Camera SE is loaded: in 1st person and when switching to 3rd person the movement controls stay on for it (the keys are blocked)");
 				}
 				return found;
 			}();
 			return loaded;
 		}
 
+		// the keys that move the player while the movement controls count as enabled
+		void BlockMovementKeys(bool a_block)
+		{
+			const auto playerControls = RE::PlayerControls::GetSingleton();
+			if (!playerControls) {
+				return;
+			}
+			for (const auto handler : { static_cast<RE::PlayerInputHandler*>(playerControls->movementHandler),
+					 static_cast<RE::PlayerInputHandler*>(playerControls->autoMoveHandler),
+					 static_cast<RE::PlayerInputHandler*>(playerControls->sprintHandler) }) {
+				if (handler) {
+					handler->SetInputEventHandlingEnabled(!a_block);
+				}
+			}
+		}
+
 		// Movement counts as enabled again (what Improved Camera checks) while the movement keys stay blocked
 		void OpenMovementForCamera(bool a_open)
 		{
 			const auto controls = RE::ControlMap::GetSingleton();
-			const auto playerControls = RE::PlayerControls::GetSingleton();
-			if (!controls || !playerControls || !playerControls->movementHandler || a_open == state.movementOpened ||
+			if (!controls || a_open == state.movementOpened ||
 				std::ranges::find(state.disabledControls, Flag::kMovement) == state.disabledControls.end()) {
 				return;
 			}
-			playerControls->movementHandler->SetInputEventHandlingEnabled(!a_open);
+			BlockMovementKeys(a_open);
 			controls->ToggleControls(Flag::kMovement, a_open, false);
 			state.movementOpened = a_open;
+		}
+
+		// Improved Camera 2 takes disabled movement for a scripted scene: from 1st person it switches to 3rd (its
+		// animation camera), which ended the inspection right away. In 1st person movement stays "on" for it.
+		void MovementForCamera()
+		{
+			if (ImprovedCamera()) {
+				OpenMovementForCamera(!state.thirdPerson);
+			}
 		}
 
 		// ---- switching the view while holding: fade to black, switch 3rd <-> 1st person, fade back ----
@@ -1104,6 +1177,7 @@ namespace Inspect
 		// in the dark: the hand lets go of the old view's arm and the camera switches; the inspection ends in this view
 		void SwitchViewNow()
 		{
+			ShowCameraArms(false);
 			Telekinesis::Stop();
 			ArmPose::Release();
 			HeadLook::Release();
@@ -1130,6 +1204,7 @@ namespace Inspect
 				// SmoothCam's camera stays ours until the end: given back and asked for again, it was refused
 				state.thirdPerson = false;
 				state.stillness = 0.0f;
+				MovementForCamera();
 				camera->ForceFirstPerson();
 			}
 			state.switched = true;
@@ -1142,7 +1217,9 @@ namespace Inspect
 		void EndSwitchView()
 		{
 			const auto& settings = Settings::Get();
-			OpenMovementForCamera(false);
+			if (state.switchToThird) {
+				OpenMovementForCamera(false);
+			}
 			if (state.switchToThird && ThirdPersonCamera() && StartThirdPerson()) {
 				state.cameraBlend = 1.0f;
 				state.captureStartOnReturn = true;  // the game's camera may still be zooming out from 1st person now
@@ -1633,20 +1710,34 @@ namespace Inspect
 		// the item for sale whose activation skipped the store's buy: its pickup (right after) goes to the hand
 		RE::ObjectRefHandle forSaleRef;
 
-		// The player activates the item under the crosshair: if the store would ask to buy it, the activation perks are
-		// skipped (the store's buy box with them), so the game's own activation picks it up into the hand
-		bool TakeForSale(const RE::ObjectRefHandle& a_target)
+		// the last answer of TakeForSale: each of PSDI's activation entries asks, one activation gets one answer
+		RE::ObjectRefHandle forSaleAsked;
+		std::uint32_t       forSaleAskedAt{ 0 };
+		bool                forSaleAnswer{ false };
+		constexpr std::uint32_t kForSaleAnswerTime = 250;  // ms
+
+		// The player activates an item: if the store would ask to buy it, PSDI's activation entries are skipped (the
+		// store's buy box with them), so the game's own activation picks it up into the hand
+		bool TakeForSale(RE::TESObjectREFR* a_target)
 		{
+			const auto handle = a_target->GetHandle();
+			const auto now = RE::GetDurationOfApplicationRunTime();
+			if (handle == forSaleAsked && now - forSaleAskedAt < kForSaleAnswerTime) {
+				return forSaleAnswer;
+			}
+			forSaleAsked = handle;
+			forSaleAskedAt = now;
+			forSaleAnswer = false;
 			forSaleRef = {};
 			const auto& settings = Settings::Get();
 			const auto  player = Player();
-			const auto  ref = a_target.get();
-			if (!settings.enabled || !settings.buyStoreItems || Active() || !player || !ref || !StoreDisplay::ForSale(ref.get()) ||
-				!CanInspect(player, ref.get(), true)) {
+			if (!settings.enabled || !settings.buyStoreItems || Active() || !player || !StoreDisplay::ForSale(a_target) ||
+				!CanInspect(player, a_target, true)) {
 				return false;
 			}
-			forSaleRef = a_target;
-			logs::info("{:08X} is for sale: it goes to the hand, the store asks to buy it when it goes into the backpack", ref->GetFormID());
+			forSaleRef = handle;
+			forSaleAnswer = true;
+			logs::info("{:08X} is for sale: it goes to the hand, the store asks to buy it when it goes into the backpack", a_target->GetFormID());
 			return true;
 		}
 
@@ -1658,16 +1749,22 @@ namespace Inspect
 			return found != counts.end() ? found->second : 0;
 		}
 
-		// PlayerCharacter::ActivatePickRef (AE 40548) asks the activation perks (AE 41003) first: true = a perk took the
-		// activation (the store's buy box), false = the game's own activation follows
-		struct ActivationPerks
+		// Activating an item (PlayerCharacter::ActivatePickRef) asks the perks' activation entries first (AE 41003, the
+		// only user of the Activate entry point): a perk that takes it (PSDI's buy box) replaces the game's own activation.
+		// The perk visitor (AE 23527) asks each entry's conditions through its vtable, so this hook needs no address
+		// inside a function and works the same on SE and AE. Arguments: the player, the activated item.
+		struct EntryConditions
 		{
-			static bool thunk(const RE::ObjectRefHandle* a_target)
+			static bool thunk(RE::BGSEntryPointPerkEntry* a_this, std::uint32_t a_numArgs, void* a_args)
 			{
-				if (a_target && TakeForSale(*a_target)) {
-					return false;
+				if (a_numArgs == 2 && a_args && StoreDisplay::IsActivationEntry(a_this)) {
+					const auto target = static_cast<RE::TESForm**>(a_args)[1];
+					const auto ref = target ? target->AsReference() : nullptr;
+					if (ref && TakeForSale(ref)) {
+						return false;
+					}
 				}
-				return func(a_target);
+				return func(a_this, a_numArgs, a_args);
 			}
 			static inline REL::Relocation<decltype(thunk)> func;
 		};
@@ -2612,6 +2709,7 @@ namespace Inspect
 			if (state.phase == Phase::kIdle || state.phase == Phase::kWaitMenu || state.phase == Phase::kWaitAnimation || state.phase == Phase::kFadeOut ||
 				state.phase == Phase::kWaitCamera || state.phase == Phase::kFadeBack || (state.phase == Phase::kSwitchView && state.switched)) {
 				BodyArm::Restore();  // our arm isn't shown now
+				ShowCameraArms(false);
 				return;
 			}
 			const auto player = Player();
@@ -2620,6 +2718,7 @@ namespace Inspect
 			if (!player || !root || !camera) {
 				return;
 			}
+			ShowCameraArms(true);
 			const auto frame = MakeCameraFrame(camera->world.translate, player->data.angle.x, player->data.angle.z);
 			PoseArm(root, frame, frame, 1.0f);
 			ApplyHeadLook(frame);
@@ -2753,24 +2852,6 @@ namespace Inspect
 			}
 			static inline REL::Relocation<decltype(thunk)> func;
 		};
-
-		// PlayerCharacter::ActivatePickRef (AE 40548) +0xE3: the call of the activation perks (AE 41003). Found in 1.7.104,
-		// the bytes are checked before patching.
-		void InstallActivationPerksHook()
-		{
-			if (!REL::Module::IsAE()) {
-				logs::warn("Items for sale (Purchaseable Store-Display-Items) are only supported on Skyrim AE");
-				return;
-			}
-			const auto address = REL::ID(40548).address() + 0xE3;
-			const auto destination = address + 5 + *reinterpret_cast<const std::int32_t*>(address + 1);
-			if (*reinterpret_cast<const std::uint8_t*>(address) != 0xE8 || destination != REL::ID(41003).address()) {
-				logs::warn("Activation perks call not found: items for sale are bought the store's usual way");
-				return;
-			}
-			ActivationPerks::func = SKSE::GetTrampoline().write_call<5>(address, ActivationPerks::thunk);
-			logs::info("Hooked the activation perks call");
-		}
 
 		void InstallPlayerSkeletonsHook()
 		{
@@ -2937,7 +3018,9 @@ namespace Inspect
 		logs::info("Installed hooks: PlayerCharacter::Update, PlayerCharacter::UpdateAnimation, PlayerCharacter::PickUpObject, FirstPersonState::Update, ThirdPersonState::Update, TESFlora / TESObjectTREE::Activate{}",
 			bodyHook ? ", player skeleton update" : "");
 		InstallItemZoomHook();
-		InstallActivationPerksHook();
+		REL::Relocation<std::uintptr_t> entry{ RE::VTABLE_BGSEntryPointPerkEntry[0] };
+		EntryConditions::func = entry.write_vfunc(0x0, EntryConditions::thunk);
+		logs::info("Hooked BGSEntryPointPerkEntry::CheckConditionFilters (items for sale)");
 		ContainerLid::Install();
 	}
 
@@ -2957,6 +3040,8 @@ namespace Inspect
 		ContainerLid::Forget();
 		searchedContainer = 0;
 		forSaleRef = {};
+		forSaleAsked = {};
+		ForgetCameraArms();
 		BodyArm::Forget();
 		Telekinesis::Forget();
 		if (!Active()) {

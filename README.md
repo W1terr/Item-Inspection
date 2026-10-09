@@ -34,7 +34,7 @@ Afterwards the camera goes back to where it was (or stays in the view you switch
   harvested when you put the item in the backpack; **R** puts it back and the plant stays as it was.
 
 The arm is animated procedurally in the plugin: no animation files, no behavior patches, no plugin (ESP).
-Works with skeleton replacers such as XPMSSE, and with Improved Camera SE and SmoothCam. With
+Works with skeleton replacers such as XPMSSE, and with Improved Camera SE (1.x and 2) and SmoothCam. With
 [Immersive Interactions](https://www.nexusmods.com/skyrimspecialedition/mods/47670) its pickup animation plays first
 in 3rd person, then the item comes to your hand. With
 [Dynamic Looting and Harvesting Animations](https://www.nexusmods.com/skyrimspecialedition/mods/114547) its harvest
@@ -51,7 +51,7 @@ With [Purchaseable Store-Display-Items](https://www.nexusmods.com/skyrimspeciale
 in a shop goes to your hand like any other ("Buy" in the key hint). Putting it in the backpack asks you to buy it, with
 that mod's own message box and price; buy it and it goes into your backpack, don't and it's put back where it was.
 Taverns, homes and stealing work as that mod does. Turn off "Buy store items when you put them in the backpack" to have
-it ask right away as usual (Skyrim AE only).
+it ask right away as usual.
 
 ## Requirements
 
