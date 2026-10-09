@@ -1784,21 +1784,78 @@ namespace Inspect
 			func(a_this, a_object, a_count, a_arg3, a_playSound);
 		}
 
-		// The inventory menu's "Item Zoom" (scroll up on the item). Zooming in takes the item in the hand instead.
+		// The inventory menu's item zoom (scroll up on the item, or the "Item Zoom" key): zooming in takes the item in the
+		// hand instead. Two ways in, both found in 1.7.104 and hooked through the menu's vtable (the same on SE and AE):
+		// the menu's ZoomItemModel callback (its swf calls it on the mouse wheel: +1 in, -1 out; vanilla, SkyUI and
+		// Edge UI do) and the "Item Zoom" user event in InventoryMenu::ProcessMessage.
 		struct ItemZoom
 		{
-			static bool thunk(RE::Inventory3DManager* a_this, RE::VR_DEVICE a_device)
+			// true: the zoom is ours (the item goes to the hand, or one is held already)
+			static bool Take()
 			{
-				// One scroll can reach this from more than one place (menu message and zoom callback): once we took the
-				// item, every further zoom is swallowed, or the vanilla zoom would start in the closing menu.
+				// One scroll can arrive both ways: once we took the item, every further zoom is swallowed, or the
+				// vanilla zoom would start in the closing menu.
 				if (Active()) {
-					return false;
+					return true;
 				}
-				const float progress = a_this ? a_this->GetRuntimeData().zoomProgress : -1.0f;
-				if (progress == 0.0f && BeginFromInventory(a_this)) {
-					return false;
+				const auto manager = RE::Inventory3DManager::GetSingleton();
+				return manager && manager->GetRuntimeData().zoomProgress == 0.0f && BeginFromInventory(manager);
+			}
+
+			static void Callback(const RE::FxDelegateArgs& a_args)
+			{
+				const bool zoomIn = a_args.GetArgCount() > 0 && a_args[0].IsNumber() && a_args[0].GetNumber() > 0.0;
+				if ((zoomIn || Active()) && Take()) {
+					return;
 				}
-				return func(a_this, a_device);
+				if (original) {
+					original(a_args);
+				}
+			}
+			static inline RE::FxDelegateHandler::CallbackFn* original{ nullptr };
+		};
+
+		// passes the menu's callbacks on to the game, ZoomItemModel through ItemZoom
+		class ZoomRegistration : public RE::FxDelegateHandler::CallbackProcessor
+		{
+		public:
+			explicit ZoomRegistration(RE::FxDelegateHandler::CallbackProcessor* a_game) :
+				game(a_game)
+			{}
+
+			void Process(const RE::GString& a_methodName, RE::FxDelegateHandler::CallbackFn* a_method) override
+			{
+				if (a_methodName.c_str() && "ZoomItemModel"sv == a_methodName.c_str() && a_method != ItemZoom::Callback) {
+					ItemZoom::original = a_method;
+					a_method = ItemZoom::Callback;
+				}
+				game->Process(a_methodName, a_method);
+			}
+
+		private:
+			RE::FxDelegateHandler::CallbackProcessor* game;
+		};
+
+		struct InventoryCallbacks
+		{
+			static void thunk(RE::InventoryMenu* a_this, RE::FxDelegateHandler::CallbackProcessor* a_processor)
+			{
+				ZoomRegistration registration{ a_processor };
+				func(a_this, a_processor ? &registration : a_processor);
+			}
+			static inline REL::Relocation<decltype(thunk)> func;
+		};
+
+		struct InventoryMessage
+		{
+			static RE::UI_MESSAGE_RESULTS thunk(RE::InventoryMenu* a_this, RE::UIMessage& a_message)
+			{
+				const auto userEvents = RE::UserEvents::GetSingleton();
+				if (a_message.type == RE::UI_MESSAGE_TYPE::kUserEvent && a_message.data && userEvents &&
+					static_cast<RE::BSUIMessageData*>(a_message.data)->fixedStr == userEvents->itemZoom && ItemZoom::Take()) {
+					return RE::UI_MESSAGE_RESULTS::kHandled;
+				}
+				return func(a_this, a_message);
 			}
 			static inline REL::Relocation<decltype(thunk)> func;
 		};
@@ -2967,36 +3024,12 @@ namespace Inspect
 			}
 		};
 
-		// Calls of Inventory3DManager::ToggleItemZoom (AE 51760) in the inventory menu: its message handler ("Item Zoom"
-		// user event, AE 51848) and its zoom callback (AE 51862). Found in 1.7.104; the bytes are checked before patching.
-		struct CallSite
-		{
-			std::uint64_t id;
-			std::ptrdiff_t offset;
-		};
-		constexpr std::array<CallSite, 3> kItemZoomCalls{ { { 51848, 0x406 }, { 51862, 0x94 }, { 51862, 0xE6 } } };
-
 		void InstallItemZoomHook()
 		{
-			if (!REL::Module::IsAE()) {
-				logs::warn("Taking items out of the inventory is only supported on Skyrim AE");
-				return;
-			}
-			const auto target = REL::ID(51760).address();
-			auto&      trampoline = SKSE::GetTrampoline();
-			int        installed = 0;
-			for (const auto& site : kItemZoomCalls) {
-				const auto address = REL::ID(site.id).address() + site.offset;
-				const auto bytes = reinterpret_cast<const std::uint8_t*>(address);
-				const auto destination = address + 5 + *reinterpret_cast<const std::int32_t*>(address + 1);
-				if (bytes[0] != 0xE8 || destination != target) {
-					logs::warn("Inventory zoom call {} +0x{:X} not found, skipped", site.id, site.offset);
-					continue;
-				}
-				ItemZoom::func = trampoline.write_call<5>(address, ItemZoom::thunk);
-				++installed;
-			}
-			logs::info("Hooked {} of {} inventory item zoom calls", installed, kItemZoomCalls.size());
+			REL::Relocation<std::uintptr_t> menu{ RE::VTABLE_InventoryMenu[0] };
+			InventoryCallbacks::func = menu.write_vfunc(0x1, InventoryCallbacks::thunk);
+			InventoryMessage::func = menu.write_vfunc(0x4, InventoryMessage::thunk);
+			logs::info("Hooked InventoryMenu::Accept (ZoomItemModel) and InventoryMenu::ProcessMessage (Item Zoom)");
 		}
 	}
 

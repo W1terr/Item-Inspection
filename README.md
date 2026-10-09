@@ -29,7 +29,7 @@ Afterwards the camera goes back to where it was (or stays in the view you switch
 - Optional "Hold a key to inspect": items go to your hand only when you hold a key (Left Shift / LB by default) while
   you press Activate; a normal press picks them up as usual.
 - In the inventory, scrolling up on an item (the vanilla zoom) closes the inventory and puts the item in your hand.
-  Putting it away opens the inventory again (Skyrim AE only).
+  Putting it away opens the inventory again.
 - Harvesting a plant (flowers, mushrooms, nests, nirnroot...) puts its ingredient in your hand first. The plant is
   harvested when you put the item in the backpack; **R** puts it back and the plant stays as it was.
 
