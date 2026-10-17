@@ -3,7 +3,7 @@ includes("lib/commonlibsse-ng")
 
 -- set project constants
 set_project("ItemInspection")
-set_version("2.3.3")
+set_version("2.4.0")
 set_license("GPL-3.0")
 set_languages("c++23")
 set_warnings("allextra")

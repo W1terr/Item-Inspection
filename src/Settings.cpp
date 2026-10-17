@@ -106,6 +106,7 @@ namespace Settings
 			a_func("ThirdPerson", "fAnimationWait", a_values.animationWait, kWait);
 			a_func("ThirdPerson", "bStandStill", a_values.standStill);
 			a_func("ThirdPerson", "bHeadLook", a_values.headLook);
+			a_func("ThirdPerson", "bStowOverShoulder", a_values.stowOverShoulder);
 			a_func("ThirdPerson", "fItemSize", a_values.bodyItemScale, kItemScale);
 			a_func("ThirdPerson", "fItemRight", a_values.bodyItemRight, kItemOffset);
 			a_func("ThirdPerson", "fItemForward", a_values.bodyItemForward, kItemOffset);

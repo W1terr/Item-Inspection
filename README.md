@@ -11,7 +11,8 @@ When you take an item from the world it doesn't go straight to your inventory:
 2. Move the mouse (or the right stick) to turn the item and look at it from every side. The mouse wheel brings it closer
    or moves it farther. Hold the right mouse button (gamepad RT) to look around; the hand and the item stay put.
 3. Press **E** (gamepad **A**) to put it in your backpack: the item comes down onto your palm, the hand goes down and
-   behind your back (in 3rd person into a pocket at your hip), and the item is added to the inventory.
+   behind your back (in 3rd person into a pocket at your hip, or over your shoulder: chosen in the installer), and
+   the item is added to the inventory.
    Press **R** (gamepad **B**) to put it back where it was instead.
    Press **F** (gamepad right stick click) to switch between 3rd and 1st person while you hold it (with a short fade).
 
@@ -71,6 +72,8 @@ it ask right away as usual.
   for sale are bought through its own script; nothing of it is included.
 - The telekinesis hand effect, light and grab sound are the vanilla Telekinesis spell's (Skyrim.esm); the fist that
   holds weapons starts from the game's 1st person one-handed idle. Both are used from the game while it runs.
+- The "over the shoulder" stow (3rd person) follows the vanilla bow sheath animation (bow_unequip), mirrored to the
+  right hand: a few positions sampled from it are built into the plugin.
 
 ## License
 

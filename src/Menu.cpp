@@ -1,5 +1,8 @@
 #include "Menu.h"
 
+#include <atomic>
+#include <chrono>
+
 #include "Keys.h"
 #include "Lang.h"
 #include "QuickLoot.h"
@@ -20,7 +23,30 @@ namespace Menu
 		namespace ImGui = ImGuiMCP;
 		using Lang::T;
 
-		bool dirty{ false };  // saved when the menu closes
+		// Changes are written to the INI soon after they're made: a captured key right away, a slider once it rests for
+		// kSaveDelay, anything left when the menu closes. (Saved only on the framework's close event before, a mod user's
+		// changed keys were lost.)
+		std::atomic<bool>                     dirty{ false };
+		std::atomic<bool>                     saveNow{ false };  // set from the input thread by a key capture
+		std::chrono::steady_clock::time_point lastChange;         // render thread only
+		constexpr auto                        kSaveDelay = std::chrono::milliseconds(750);
+
+		void MarkChanged()
+		{
+			dirty = true;
+			lastChange = std::chrono::steady_clock::now();
+		}
+
+		// render thread: writes the settings when a change is due (a_force: whatever is pending, e.g. the menu closes)
+		void SaveIfDue(bool a_force)
+		{
+			if (!dirty || (!a_force && !saveNow && std::chrono::steady_clock::now() - lastChange < kSaveDelay) || !dirty.exchange(false)) {
+				return;
+			}
+			saveNow = false;
+			Settings::Save();
+			logs::info("Settings saved");
+		}
 
 		// key capture: the setting waiting for a key press, and whether it takes gamepad buttons
 		int* capturing{ nullptr };
@@ -50,7 +76,7 @@ namespace Menu
 		void Changed(bool a_changed)
 		{
 			if (a_changed) {
-				dirty = true;
+				MarkChanged();
 			}
 		}
 
@@ -105,6 +131,7 @@ namespace Menu
 
 		void __stdcall RenderSettings()
 		{
+			SaveIfDue(false);
 			auto& v = Settings::Edit();
 
 			Header("General");
@@ -262,7 +289,7 @@ namespace Menu
 			Header("Third person");
 			Checkbox("Stay in third person", v.thirdPerson,
 				"In 3rd person the camera moves in over your shoulder instead of switching to 1st person,\n"
-				"and you see your hand put the item away in a pocket at your hip.");
+				"and you see your hand put the item away.");
 			if (v.thirdPerson) {
 				ImGui::Indent();
 				Slider("Camera right", v.cameraRight, Settings::kCameraSide, "%.1f", "Game units the camera is to the right of your eyes.");
@@ -301,12 +328,13 @@ namespace Menu
 				const int language = v.language;  // the language is set on its own page
 				v = Settings::Values{};
 				v.language = language;
-				dirty = true;
+				MarkChanged();
 			}
 		}
 
 		void __stdcall RenderLanguages()
 		{
+			SaveIfDue(false);
 			auto& v = Settings::Edit();
 			Header("Language");
 			int choice = v.language;
@@ -317,7 +345,7 @@ namespace Menu
 			if (changed && choice != v.language) {
 				v.language = choice;
 				Lang::Set(choice);
-				dirty = true;
+				MarkChanged();
 				renamePending = true;  // the menu entries get their new names before the next frame
 			}
 			ImGui::Spacing();
@@ -375,6 +403,7 @@ namespace Menu
 				*capturing = code;
 				capturing = nullptr;
 				dirty = true;
+				saveNow = true;  // written with the next frame
 				return true;
 			}
 			return false;
@@ -388,14 +417,11 @@ namespace Menu
 					renamePending = false;
 					ApplyNames();
 				}
+				SaveIfDue(false);
 				break;
 			case SKSEMenuFramework::Model::EventType::kCloseMenu:
 				capturing = nullptr;
-				if (dirty) {
-					Settings::Save();
-					dirty = false;
-					logs::info("Settings saved");
-				}
+				SaveIfDue(true);
 				break;
 			default:
 				break;

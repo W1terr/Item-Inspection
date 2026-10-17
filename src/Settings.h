@@ -90,6 +90,7 @@ namespace Settings
 		float animationWait{ 0.8f };
 		bool  standStill{ true };  // the body's animation (idles too) settles and stops while the item is held
 		bool  headLook{ true };    // the head turns to look at the item in the hand
+		bool  stowOverShoulder{ false };  // the hand puts the item over the shoulder (like the bow sheath), not into a pocket
 		float bodyItemScale{ 0.7f };  // items (not weapons) are shown this much smaller in 3rd person
 		float bodyItemRight{ 7.2f };  // item offset from its place over the palm, as the camera sees it
 		float bodyItemForward{ -0.3f };
