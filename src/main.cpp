@@ -22,6 +22,7 @@ namespace
 			Inspect::RegisterInput();
 			break;
 		case SKSE::MessagingInterface::kDataLoaded:
+			Inspect::InstallPickUpHook();
 			Settings::Load();
 			Lang::Set(Settings::Get().language);
 			Menu::Register();

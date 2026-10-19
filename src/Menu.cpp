@@ -44,8 +44,7 @@ namespace Menu
 				return;
 			}
 			saveNow = false;
-			Settings::Save();
-			logs::info("Settings saved");
+			Settings::Save();  // logs where it went
 		}
 
 		// key capture: the setting waiting for a key press, and whether it takes gamepad buttons

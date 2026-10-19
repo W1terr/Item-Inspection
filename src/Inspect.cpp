@@ -3210,12 +3210,18 @@ namespace Inspect
 		}
 	}
 
+	void InstallPickUpHook()
+	{
+		REL::Relocation<std::uintptr_t> player{ RE::VTABLE_PlayerCharacter[0] };
+		PickUpObject::func = player.write_vfunc(0xCC, PickUpObject::thunk);
+		logs::info("Hooked PlayerCharacter::PickUpObject (after the other plugins: theirs see an item when it goes into the backpack)");
+	}
+
 	void InstallHooks()
 	{
 		REL::Relocation<std::uintptr_t> player{ RE::VTABLE_PlayerCharacter[0] };
 		PlayerUpdate::func = player.write_vfunc(0xAD, PlayerUpdate::thunk);
 		PlayerAnimation::func = player.write_vfunc(0x7D, PlayerAnimation::thunk);
-		PickUpObject::func = player.write_vfunc(0xCC, PickUpObject::thunk);
 		REL::Relocation<std::uintptr_t> firstPerson{ RE::VTABLE_FirstPersonState[0] };
 		FirstPersonUpdate::func = firstPerson.write_vfunc(0x3, FirstPersonUpdate::thunk);
 		REL::Relocation<std::uintptr_t> thirdPerson{ RE::VTABLE_ThirdPersonState[0] };
@@ -3225,7 +3231,7 @@ namespace Inspect
 		REL::Relocation<std::uintptr_t> tree{ RE::VTABLE_TESObjectTREE[0] };
 		HarvestActivate<RE::TESObjectTREE>::func = tree.write_vfunc(0x37, HarvestActivate<RE::TESObjectTREE>::thunk);
 		InstallPlayerSkeletonsHook();
-		logs::info("Installed hooks: PlayerCharacter::Update, PlayerCharacter::UpdateAnimation, PlayerCharacter::PickUpObject, FirstPersonState::Update, ThirdPersonState::Update, TESFlora / TESObjectTREE::Activate{}",
+		logs::info("Installed hooks: PlayerCharacter::Update, PlayerCharacter::UpdateAnimation, FirstPersonState::Update, ThirdPersonState::Update, TESFlora / TESObjectTREE::Activate{}",
 			bodyHook ? ", player skeleton update" : "");
 		InstallItemZoomHook();
 		InstallMenuKeysHook();

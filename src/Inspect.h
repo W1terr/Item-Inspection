@@ -6,6 +6,9 @@
 namespace Inspect
 {
 	void InstallHooks();
+	// The pickup hook, installed once every plugin is loaded (kDataLoaded): ours then runs before the pickup hooks of
+	// other mods (TrueHUD's recent loot showed the item when it only came to the hand, then again when it was stowed)
+	void InstallPickUpHook();
 	void RegisterInput();  // after the input devices exist (kInputLoaded)
 	void Reset();          // game load / new game: drop a running inspection without picking up
 

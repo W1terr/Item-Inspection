@@ -10,25 +10,54 @@ namespace Settings
 	{
 		Values values;
 
-		// GetPrivateProfileString looks for relative paths in the Windows folder
-		const std::wstring& Path()
+		// The INI next to our DLL (Data\SKSE\Plugins), found from the DLL itself: the game's working folder isn't always
+		// the game folder (a mod user's settings were written to a path that wasn't read back). Absolute, since
+		// GetPrivateProfileString looks for relative paths in the Windows folder.
+		const std::filesystem::path& PluginIni()
 		{
-			static const std::wstring path = (std::filesystem::current_path() / "Data" / "SKSE" / "Plugins" / "ItemInspection.ini").wstring();
+			static const std::filesystem::path path = [] {
+				HMODULE module = nullptr;
+				wchar_t file[MAX_PATH]{};
+				if (GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+						reinterpret_cast<LPCWSTR>(&PluginIni), &module) &&
+					GetModuleFileNameW(module, file, MAX_PATH) > 0) {
+					return std::filesystem::path(file).replace_filename(L"ItemInspection.ini");
+				}
+				return std::filesystem::current_path() / "Data" / "SKSE" / "Plugins" / "ItemInspection.ini";
+			}();
 			return path;
 		}
+
+		// Where the settings go when the game folder can't be written (no write access, e.g. under Program Files):
+		// Documents\My Games\Skyrim Special Edition\SKSE, next to our log. Read on top of the plugin's INI.
+		std::filesystem::path UserIni()
+		{
+			const auto folder = SKSE::log::log_directory();
+			return folder ? *folder / "ItemInspection.ini" : std::filesystem::path{};
+		}
+
+		std::filesystem::path current;  // the INI being read / written
+		bool                  writeFailed{ false };
+		DWORD                 writeError{ 0 };
 
 		std::wstring Wide(std::string_view a_text) { return { a_text.begin(), a_text.end() }; }
 
 		std::wstring ReadString(std::string_view a_section, std::string_view a_key)
 		{
 			wchar_t buffer[64]{};
-			GetPrivateProfileStringW(Wide(a_section).c_str(), Wide(a_key).c_str(), L"", buffer, static_cast<DWORD>(std::size(buffer)), Path().c_str());
+			GetPrivateProfileStringW(Wide(a_section).c_str(), Wide(a_key).c_str(), L"", buffer, static_cast<DWORD>(std::size(buffer)), current.c_str());
 			return buffer;
 		}
 
 		void WriteString(std::string_view a_section, std::string_view a_key, const std::string& a_value)
 		{
-			WritePrivateProfileStringW(Wide(a_section).c_str(), Wide(a_key).c_str(), Wide(a_value).c_str(), Path().c_str());
+			if (writeFailed) {
+				return;
+			}
+			if (!WritePrivateProfileStringW(Wide(a_section).c_str(), Wide(a_key).c_str(), Wide(a_value).c_str(), current.c_str())) {
+				writeFailed = true;
+				writeError = GetLastError();
+			}
 		}
 
 		// one table for reading and writing every setting
@@ -178,14 +207,46 @@ namespace Settings
 
 	void Load()
 	{
+		std::error_code error;
+		current = PluginIni();
+		logs::info("Settings file {}{}", current.string(), std::filesystem::exists(current, error) ? "" : " (not found: defaults)");
 		ForEach(values, Reader{});
+		// saved there before because the game folder couldn't be written
+		if (const auto user = UserIni(); !user.empty() && std::filesystem::exists(user, error)) {
+			current = user;
+			ForEach(values, Reader{});
+			logs::info("Settings saved before in {} read on top", user.string());
+		}
 		logs::info("Settings: enabled {}, always {}, inventory {}, keys store {} / {} put back {} / {}, hold ({}, {}, {}), item size {}",
 			values.enabled, values.alwaysInspect, values.inventoryInspect, values.storeKey, values.storeGamepadKey, values.putBackKey,
 			values.putBackGamepadKey, values.holdRight, values.holdForward, values.holdUp, values.itemScale);
 	}
 
-	void Save()
+	bool Save()
 	{
+		// once the settings live in the user folder they stay there (the plugin's INI is read first, under them)
+		std::error_code error;
+		const auto      user = UserIni();
+		const bool      inUser = !user.empty() && std::filesystem::exists(user, error);
+		current = inUser ? user : PluginIni();
+		writeFailed = false;
 		ForEach(values, Writer{});
+		if (!writeFailed) {
+			logs::info("Settings saved to {}", current.string());
+			return true;
+		}
+		logs::warn("Couldn't write {} (Windows error {})", current.string(), writeError);
+		if (inUser || user.empty()) {
+			return false;
+		}
+		current = user;
+		writeFailed = false;
+		ForEach(values, Writer{});
+		if (writeFailed) {
+			logs::error("Couldn't write {} either (Windows error {}): settings not saved", current.string(), writeError);
+			return false;
+		}
+		logs::info("Settings saved to {} instead (read on top of the plugin's INI)", current.string());
+		return true;
 	}
 }

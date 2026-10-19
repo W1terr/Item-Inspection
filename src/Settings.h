@@ -139,5 +139,5 @@ namespace Settings
 	const Values& Get();
 	Values&       Edit();  // the menu changes values in place, then calls Save()
 	void          Load();
-	void          Save();
+	bool          Save();  // false: couldn't be written anywhere (logged)
 }
