@@ -151,6 +151,8 @@ namespace Menu
 				Help("Every kind of item shows up in your hand again the next time you take it.");
 				ImGui::Unindent();
 			}
+			Checkbox("Only in 1st person", v.firstPersonOnly,
+				"Items go to your hand only when you are in 1st person.\nIn 3rd person you take them like in the normal game.");
 			Checkbox("Scroll up on an item in the inventory to take it in your hand", v.inventoryInspect,
 				"Instead of the zoomed preview, the inventory closes and you hold the item.\nPutting it away opens the inventory again.");
 			Checkbox("Look at items you steal too", v.inspectStolen,
@@ -188,7 +190,6 @@ namespace Menu
 			ImGui::TextDisabled("%s", T("Weapons and bows are held by the grip; the mouse turns the hand. Other items float over the hand."));
 
 			Header("Normal pickup for");
-			Checkbox("Items taken during combat", v.skipInCombat);
 			Checkbox("Gold", v.skipGold);
 			Checkbox("Arrows and bolts", v.skipAmmo);
 			Checkbox("Weapons", v.skipWeapons, "Swords, axes, bows... go straight into the inventory, like in the normal game.");

@@ -28,8 +28,9 @@ namespace Settings
 			return path;
 		}
 
-		// Where the settings go when the game folder can't be written (no write access, e.g. under Program Files):
-		// Documents\My Games\Skyrim Special Edition\SKSE, next to our log. Read on top of the plugin's INI.
+		// The player's own settings: Documents\My Games\Skyrim Special Edition\SKSE, next to our log, read on top of the
+		// plugin's INI. Outside the mod's files, so updating or reinstalling the mod (which brings a fresh INI with the
+		// defaults) doesn't reset them; the plugin's INI only gives the defaults and the installer's choices.
 		std::filesystem::path UserIni()
 		{
 			const auto folder = SKSE::log::log_directory();
@@ -37,6 +38,10 @@ namespace Settings
 		}
 
 		std::filesystem::path current;  // the INI being read / written
+		bool                  userFile{ false };  // current is the player's own settings file
+
+		// chosen in the installer (FOMOD), always read from the plugin's INI: a reinstall with another choice must win
+		bool InstallerKey(std::string_view a_key) { return a_key == "bStowOverShoulder"; }
 		bool                  writeFailed{ false };
 		DWORD                 writeError{ 0 };
 
@@ -73,12 +78,12 @@ namespace Settings
 			a_func("General", "bTelekinesisSound", a_values.telekinesisSound);
 			a_func("General", "bItemSound", a_values.itemSound);
 			a_func("General", "fTelekinesisSize", a_values.telekinesisSize, kEffectSize);
-			a_func("General", "bSkipInCombat", a_values.skipInCombat);
 			a_func("General", "bSkipGold", a_values.skipGold);
 			a_func("General", "bSkipAmmo", a_values.skipAmmo);
 			a_func("General", "bSkipWeapons", a_values.skipWeapons);
 			a_func("General", "bSkipArmor", a_values.skipArmor);
 			a_func("General", "bSkipHarvest", a_values.skipHarvest);
+			a_func("General", "bFirstPersonOnly", a_values.firstPersonOnly);
 			a_func("General", "bBuyStoreItems", a_values.buyStoreItems);
 			a_func("General", "bShowHint", a_values.showHint);
 			a_func("General", "bWorldWaits", a_values.worldWaits);
@@ -160,6 +165,9 @@ namespace Settings
 		{
 			void operator()(std::string_view a_section, std::string_view a_key, bool& a_value) const
 			{
+				if (userFile && InstallerKey(a_key)) {
+					return;
+				}
 				if (const auto text = ReadString(a_section, a_key); !text.empty()) {
 					a_value = text != L"0" && text != L"false";
 				}
@@ -182,6 +190,9 @@ namespace Settings
 		{
 			void operator()(std::string_view a_section, std::string_view a_key, bool& a_value) const
 			{
+				if (userFile && InstallerKey(a_key)) {
+					return;
+				}
 				WriteString(a_section, a_key, a_value ? "1" : "0");
 			}
 			void operator()(std::string_view a_section, std::string_view a_key, int& a_value) const
@@ -205,17 +216,42 @@ namespace Settings
 		return values;
 	}
 
+	// writes every setting to one file; false if Windows refused
+	bool WriteAll(const std::filesystem::path& a_path, bool a_userFile)
+	{
+		current = a_path;
+		userFile = a_userFile;
+		writeFailed = false;
+		ForEach(values, Writer{});
+		userFile = false;
+		if (writeFailed) {
+			logs::warn("Couldn't write {} (Windows error {})", a_path.string(), writeError);
+		}
+		return !writeFailed;
+	}
+
+	std::filesystem::path PluginFolder()
+	{
+		return PluginIni().parent_path();
+	}
+
 	void Load()
 	{
 		std::error_code error;
 		current = PluginIni();
+		userFile = false;
 		logs::info("Settings file {}{}", current.string(), std::filesystem::exists(current, error) ? "" : " (not found: defaults)");
 		ForEach(values, Reader{});
-		// saved there before because the game folder couldn't be written
-		if (const auto user = UserIni(); !user.empty() && std::filesystem::exists(user, error)) {
+		const auto user = UserIni();
+		if (!user.empty() && std::filesystem::exists(user, error)) {
 			current = user;
+			userFile = true;
 			ForEach(values, Reader{});
-			logs::info("Settings saved before in {} read on top", user.string());
+			userFile = false;
+			logs::info("Your settings read from {}", user.string());
+		} else if (!user.empty() && WriteAll(user, true)) {
+			// first start with this version: the settings so far (the plugin's INI) become the player's own file
+			logs::info("Your settings are kept in {} from now on (mod updates don't reset them)", user.string());
 		}
 		logs::info("Settings: enabled {}, always {}, inventory {}, keys store {} / {} put back {} / {}, hold ({}, {}, {}), item size {}",
 			values.enabled, values.alwaysInspect, values.inventoryInspect, values.storeKey, values.storeGamepadKey, values.putBackKey,
@@ -224,29 +260,17 @@ namespace Settings
 
 	bool Save()
 	{
-		// once the settings live in the user folder they stay there (the plugin's INI is read first, under them)
-		std::error_code error;
-		const auto      user = UserIni();
-		const bool      inUser = !user.empty() && std::filesystem::exists(user, error);
-		current = inUser ? user : PluginIni();
-		writeFailed = false;
-		ForEach(values, Writer{});
-		if (!writeFailed) {
-			logs::info("Settings saved to {}", current.string());
+		const auto user = UserIni();
+		if (!user.empty() && WriteAll(user, true)) {
+			logs::info("Settings saved to {}", user.string());
 			return true;
 		}
-		logs::warn("Couldn't write {} (Windows error {})", current.string(), writeError);
-		if (inUser || user.empty()) {
-			return false;
+		// the Documents folder can't be written: the plugin's INI then (an update resets it)
+		if (WriteAll(PluginIni(), false)) {
+			logs::info("Settings saved to {}", PluginIni().string());
+			return true;
 		}
-		current = user;
-		writeFailed = false;
-		ForEach(values, Writer{});
-		if (writeFailed) {
-			logs::error("Couldn't write {} either (Windows error {}): settings not saved", current.string(), writeError);
-			return false;
-		}
-		logs::info("Settings saved to {} instead (read on top of the plugin's INI)", current.string());
-		return true;
+		logs::error("Settings not saved: no file could be written");
+		return false;
 	}
 }

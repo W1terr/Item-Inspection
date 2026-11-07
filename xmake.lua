@@ -3,13 +3,16 @@ includes("lib/commonlibsse-ng")
 
 -- set project constants
 set_project("ItemInspection")
-set_version("2.4.2")
+set_version("2.5.1")
 set_license("GPL-3.0")
 set_languages("c++23")
 set_warnings("allextra")
 
 -- add common rules
 add_rules("mode.debug", "mode.releasedbg")
+
+-- JSON reader for the translation files (res/lang)
+add_requires("nlohmann_json")
 
 -- define targets
 target("ItemInspection")
@@ -22,6 +25,7 @@ target("ItemInspection")
     add_files("src/**.cpp")
     add_headerfiles("src/**.h")
     add_includedirs("src")
+    add_packages("nlohmann_json")
     set_pcxxheader("src/pch.h")
 
     -- SKSE Menu Framework API (header only, from the framework's author)

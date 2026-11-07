@@ -82,6 +82,16 @@ namespace Inspect
 		// sneaking: the body is crouched, so the pocket is found from the right thigh bone instead (eye space axes,
 		// scaled), as tuned in game: out at the side of the crouched thigh, a little in front, lower down
 		const NiPoint3 kPocketFromThigh{ 18.0f, 6.0f, -10.0f };
+		// Standing, the body plays the vanilla take idle instead (Skyrim.esm IDLE IdleTake, idletake.hkx, 2.33 s): its
+		// right hand reaches forward (0.2-0.7 s), comes back past where ours holds the item (~1.0 s), puts it into the
+		// pouch at the back of the right hip (1.5-1.9 s) and hangs down again. Seconds from the store press (the idle
+		// starts then):
+		constexpr const char* kTakeIdle = "IdleTake";
+		constexpr float kTakeHandOverFrom = 0.6f;  // our hand still holds the item, the idle's hand comes back to it...
+		constexpr float kTakeHandOverTo = 1.1f;    // ... from here the idle moves the arm (and the item in the fist)
+		constexpr float kTakeShrinkFrom = 1.3f;    // the item slips into the pouch...
+		constexpr float kTakePocketAt = 1.55f;     // ... and is in the backpack
+		constexpr float kTakeFistOpen = 0.4f;      // seconds the fist takes to let go after that (if still posed)
 		// Or (bStowOverShoulder) over the right shoulder onto the back and down again, like the vanilla bow sheath
 		// (bow_unequip.hkx: its left hand lays the bow on the back), mirrored to the right hand. Sampled every 0.05 s from
 		// 0.30 s (hand up in front) to the end, eye space (right, forward, up), with the elbow's direction (from the middle
@@ -197,6 +207,7 @@ namespace Inspect
 		constexpr float kViewSettle = 0.1f;   // seconds the camera gets after a switch before we place things in it
 		constexpr float kIdleSettle = 0.35f;  // 3rd person: seconds the body blends back to standing before it holds still
 		constexpr float kStillFollow = 3.0f;  // 1/s: how fast the body's animation slows down / speeds up again
+		constexpr float kSwitchStillWait = 0.6f;  // after a switch to 3rd person: extra seconds before the body holds still
 		constexpr float kLateAnimationWait = 0.5f;  // Immersive Interactions picks up at the start of its animation, not halfway
 		constexpr float kSearchStandUp = 0.6f;      // seconds after the searching animation for getting up, before the camera moves
 		constexpr float kSearchTurn = 5.0f;         // 1/s: the player turns towards the container while searching
@@ -239,6 +250,8 @@ namespace Inspect
 			bool                          lootingAnimation{ false };  // Dynamic Looting's harvest animation plays first
 			bool                          riseFromHand{ false };      // ... after it the item comes up out of the right hand
 			bool                          searching{ false };  // the searching animation plays
+			bool                          takeIdle{ false };   // 3rd person stow: the vanilla take idle plays (kTake*)
+			float                         takeClock{ 0.0f };   // seconds since it started
 			float                         searchTime{ 0.0f };
 			float                         searchHeading{ 0.0f };  // facing the container
 
@@ -309,9 +322,9 @@ namespace Inspect
 			bool                          switchRequested{ false };
 			bool                          switchToThird{ false };   // kSwitchView: where to
 			bool                          switched{ false };        // kSwitchView: the camera was switched (in the dark)
-			bool                          captureStartOnReturn{ false };  // switched to 3rd person: fly back to where the game has the camera then
 			bool                          movementOpened{ false };         // Improved Camera: movement "on" for its camera, keys blocked
 			bool                          sneakKeyBlocked{ false };        // the sneak key does nothing (sneaking itself goes on)
+			bool                          interrupted{ false };            // ended by a menu taking over: the inventory doesn't reopen
 			std::vector<Flag>             disabledControls;
 			RE::NiPointer<RE::NiAVObject> hiddenWeapon;
 
@@ -560,6 +573,19 @@ namespace Inspect
 			HUD::HideHint();
 		}
 
+		// Put in the backpack: the camera is the player's again right away (the hand follows the view in 1st person; in
+		// 3rd person the camera flies back to wherever the player looks while the hand puts the item away)
+		void FreeCamera()
+		{
+			state.cameraIn = false;
+			const auto controls = RE::ControlMap::GetSingleton();
+			const auto looking = std::ranges::find(state.disabledControls, Flag::kLooking);
+			if (controls && looking != state.disabledControls.end()) {
+				controls->ToggleControls(Flag::kLooking, true, false);
+				state.disabledControls.erase(looking);
+			}
+		}
+
 		// ---- the item copy ----
 
 		void DetachItem()
@@ -785,11 +811,16 @@ namespace Inspect
 			return state.awake < 0.0f || state.awake >= kStealWake;
 		}
 
+		bool ImprovedCamera();
+
 		// Improved Camera 2 hides the 1st person arms its own way (the 1.x arm scale is handled by ArmPose) and shows
 		// them while the player's behavior variable bOffsetGPMA (Offset Movement Animation) is true: it's kept true
-		// while our hand holds the item in 1st person, then set back. Without that variable this does nothing.
+		// while our hand holds the item in 1st person, then set back. The variable also switches the 3rd person body to
+		// Offset Movement Animation's arm poses (bent arms after a switch to 3rd person), so it's only touched when
+		// Improved Camera is loaded and the behavior has it.
 		bool cameraArmsShown{ false };
 		bool cameraArmsBefore{ false };
+		bool cameraArmsMissing{ false };  // the behavior has no bOffsetGPMA: not asked again until the next game load
 
 		void ShowCameraArms(bool a_show)
 		{
@@ -806,19 +837,26 @@ namespace Inspect
 				return;
 			}
 			if (!cameraArmsShown) {
+				if (cameraArmsMissing || !ImprovedCamera()) {
+					return;
+				}
 				bool before = false;
 				const bool found = player->GetGraphVariableBool(variable, before);
-				cameraArmsBefore = found && before;
-				cameraArmsShown = true;
 				static bool logged = false;
 				if (!logged) {
 					logged = true;
 					if (found) {
-						logs::info("bOffsetGPMA found in the player's behavior: kept on while holding, so Improved Camera 2 shows the arms");
+						logs::info("bOffsetGPMA found in the player's behavior: kept on while holding in 1st person, so Improved Camera 2 shows the arms");
 					} else {
 						logs::info("No bOffsetGPMA in the player's behavior (no Offset Movement Animation): nothing to tell Improved Camera 2");
 					}
 				}
+				if (!found) {
+					cameraArmsMissing = true;
+					return;
+				}
+				cameraArmsBefore = before;
+				cameraArmsShown = true;
 			}
 			player->SetGraphVariableBool(variable, true);  // every frame, as Improved Camera asks for
 		}
@@ -827,13 +865,16 @@ namespace Inspect
 		void ForgetCameraArms()
 		{
 			cameraArmsShown = false;
+			cameraArmsMissing = false;
 		}
 
 		void Finish()
 		{
 			ShowCameraArms(false);
-			if (state.searching) {
-				Player()->NotifyAnimationGraph("IdleForceDefaultState");  // cut short: up from the search
+			if (state.searching || (state.takeIdle && !state.pickedUp)) {
+				// cut short: up from the search / out of the take (once the item is in, the take plays out on its own and
+				// moving ends it like any idle)
+				Player()->NotifyAnimationGraph("IdleForceDefaultState");
 			}
 			StopLooking(true);
 			WorldPause::End();
@@ -854,7 +895,7 @@ namespace Inspect
 				}
 			}
 			Fade::To(0.0f, Settings::Get().fadeTime * 1.5f);  // after a fade to black: show the world again
-			const bool reopen = state.source == Source::kInventory && state.phase != Phase::kWaitMenu;
+			const bool reopen = state.source == Source::kInventory && state.phase != Phase::kWaitMenu && !state.interrupted;
 			const bool container = state.source == Source::kContainer;
 			const auto lid = state.ref;
 			state = {};
@@ -882,11 +923,16 @@ namespace Inspect
 			return false;
 		}
 
-		// the player can hold something in front of the face right now
+		// the player can hold something in front of the face right now. Not in combat or with a weapon (or spell) out
+		// (or in 3rd person with "Only in 1st person"): then items are taken the normal way.
 		bool PlayerFree(RE::PlayerCharacter* a_player)
 		{
 			const auto actorState = a_player->AsActorState();
+			if (const auto camera = RE::PlayerCamera::GetSingleton(); Settings::Get().firstPersonOnly && (!camera || !camera->IsInFirstPerson())) {
+				return false;  // "Only in 1st person": 3rd person takes items the normal way
+			}
 			return !a_player->IsDead() && !a_player->IsOnMount() && !a_player->IsInKillMove() && !actorState->IsSwimming() &&
+			       !a_player->IsInCombat() && !actorState->IsWeaponDrawn() &&
 			       actorState->GetSitSleepState() == RE::SIT_SLEEP_STATE::kNormal && actorState->GetKnockState() == RE::KNOCK_STATE_ENUM::kNormal &&
 			       a_player->Get3D(true);
 		}
@@ -943,7 +989,7 @@ namespace Inspect
 			if (!a_forSale && !settings.inspectStolen && a_ref->IsCrimeToActivate()) {
 				return false;  // stealing: normal pickup
 			}
-			if (!PlayerFree(a_player) || (settings.skipInCombat && a_player->IsInCombat()) || MenuOpen()) {
+			if (!PlayerFree(a_player) || MenuOpen()) {
 				return false;
 			}
 			return true;
@@ -1344,7 +1390,9 @@ namespace Inspect
 			}
 			if (state.switchToThird && ThirdPersonCamera() && StartThirdPerson()) {
 				state.cameraBlend = 1.0f;
-				state.captureStartOnReturn = true;  // the game's camera may still be zooming out from 1st person now
+				// the body comes from 1st person (its animation may still blend from a 1st person only pose): longer
+				// before it holds still, so it doesn't freeze half way
+				state.stillClock = -kSwitchStillWait;
 			}
 			HideWeapon();
 			if (state.telekinesis) {
@@ -1617,7 +1665,7 @@ namespace Inspect
 			if (!container || (settings.bigChestsOnly ? !IsBigChest(container.get()) : !settings.lootBodies && IsBody(container.get()))) {
 				return false;  // the settings leave this kind of container to QuickLoot
 			}
-			return PlayerFree(player) && !(settings.skipInCombat && player->IsInCombat());
+			return PlayerFree(player);
 		}
 
 		// where the item comes out of the container: a body's chest, else the middle of the container's model
@@ -1740,7 +1788,7 @@ namespace Inspect
 			if (!settings.inspectStolen && a_plant->IsCrimeToActivate()) {
 				return false;  // somebody's crops: normal harvest
 			}
-			return PlayerFree(a_player) && !(settings.skipInCombat && a_player->IsInCombat()) && !MenuOpen();
+			return PlayerFree(a_player) && !MenuOpen();
 		}
 
 		// the middle of the plant's model: where its ingredient comes from
@@ -2121,11 +2169,29 @@ namespace Inspect
 			state.mouseX = state.mouseY = state.wheel = 0.0f;
 		}
 
+		// 3rd person "into a pocket", standing: the body plays the vanilla take idle, which puts the item away (see
+		// kTakeIdle). Sneaking, or if the idle doesn't start, our own hand goes to the pocket.
+		void StartTakeIdle()
+		{
+			const auto player = Player();
+			if (!state.thirdPerson || Settings::Get().stowOverShoulder || state.sneaking || !player || player->IsSneaking()) {
+				return;
+			}
+			state.stillness = 0.0f;  // the body moves again right away, at full speed
+			state.takeClock = 0.0f;
+			state.takeIdle = player->NotifyAnimationGraph(kTakeIdle);
+			if (!state.takeIdle) {
+				logs::warn("The take animation ({}) didn't start: the hand goes to the pocket on its own", kTakeIdle);
+			}
+		}
+
 		// the hand stops holding: the item goes into the backpack (kStow) or back where it was (kPutBack)
 		void LeaveHold(Phase a_next)
 		{
 			if (a_next == Phase::kStow) {
 				WakeWorldForTheft();
+				StartTakeIdle();
+				FreeCamera();
 			}
 			StopLooking(false);
 			state.inHandSet = false;
@@ -2181,6 +2247,56 @@ namespace Inspect
 			return !ref || ref->IsDisabled() || ref->IsMarkedForDeletion() || (player && ref->GetOwner() == player->GetActorBase());
 		}
 
+		// A menu that takes over the game while an item is held (not ours: the inventory we come from, the store's buy box,
+		// QuickLoot's hidden menu): its name, else nothing
+		const char* InterruptingMenu()
+		{
+			const auto ui = RE::UI::GetSingleton();
+			if (!ui) {
+				return nullptr;
+			}
+			for (const auto menu : { RE::DialogueMenu::MENU_NAME, RE::BarterMenu::MENU_NAME, RE::GiftMenu::MENU_NAME, RE::ContainerMenu::MENU_NAME,
+					 RE::TrainingMenu::MENU_NAME, RE::LockpickingMenu::MENU_NAME, RE::BookMenu::MENU_NAME, RE::SleepWaitMenu::MENU_NAME,
+					 RE::CraftingMenu::MENU_NAME, RE::RaceSexMenu::MENU_NAME }) {
+				if (ui->IsMenuOpen(menu)) {
+					return menu.data();
+				}
+			}
+			return nullptr;
+		}
+
+		// Seconds a phase that runs on its own may take before the inspection gives up (0 = the player decides)
+		float PhaseLimit(const Settings::Values& a_settings)
+		{
+			constexpr float kSlack = 3.0f;
+			switch (state.phase) {
+			case Phase::kRaise:
+				return a_settings.raiseTime + kSlack;
+			case Phase::kSettle:
+				return kSettleTime + kSlack;
+			case Phase::kStow:
+				return a_settings.stowTime + kStealWake + kSlack;
+			case Phase::kReturn:
+			case Phase::kPutBack:
+				return a_settings.returnTime + kSlack;
+			case Phase::kCameraBack:
+				return a_settings.cameraTime + kSlack;
+			case Phase::kWaitAnimation:
+				return kMaxLootingWait + a_settings.searchTime + kSearchStandUp + kSlack;
+			case Phase::kBuying:
+				return kBuyTimeout + kSlack;
+			case Phase::kFadeOut:
+			case Phase::kFadeBack:
+				return kMaxFadeWait + kSlack;
+			case Phase::kWaitCamera:
+			case Phase::kWaitMenu:
+			case Phase::kSwitchView:
+				return kCameraTimeout + kSlack;
+			default:
+				return 0.0f;  // kHold: until the player puts it away
+			}
+		}
+
 		void OnPlayerUpdate(float a_delta)
 		{
 			Telekinesis::Update(a_delta);
@@ -2208,6 +2324,20 @@ namespace Inspect
 			const bool beingBought = state.phase == Phase::kBuying || state.bought;
 			if (!player || player->IsDead() || (state.source != Source::kInventory && !state.pickedUp && !beingBought && !ref)) {
 				logs::info("Inspection ended: {}", player && !player->IsDead() ? "the item is gone" : "the player died");
+				Finish();
+				return;
+			}
+			if (const auto menu = InterruptingMenu()) {
+				// a forced dialogue (a courier...), a barter or lockpicking... took over: give everything back now, the
+				// item stays where it was. Held on, the keys were blocked after the dialogue (no menu, no saving).
+				logs::info("Inspection ended: the {} opened", menu);
+				state.interrupted = true;
+				Finish();
+				return;
+			}
+			if (const float limit = PhaseLimit(settings); limit > 0.0f && state.time > limit) {
+				// never left waiting forever with the controls and the menu keys off
+				logs::warn("Inspection ended: phase {} took {:.1f} s (stuck)", static_cast<int>(state.phase), state.time);
 				Finish();
 				return;
 			}
@@ -2359,7 +2489,7 @@ namespace Inspect
 				}
 				break;
 			case Phase::kStow:
-				if (!state.pickedUp && state.time >= settings.stowTime * kStowPickUpAt && TheftSeen()) {
+				if (!state.pickedUp && (state.takeIdle ? state.takeClock >= kTakePocketAt : state.time >= settings.stowTime * kStowPickUpAt) && TheftSeen()) {
 					state.pickedUp = true;
 					DetachItem();
 					if (world && state.bought) {
@@ -2382,7 +2512,11 @@ namespace Inspect
 					PlayTelekinesisSound(player->Get3D(false));
 					logs::info("Put in the backpack");
 				}
-				if (state.time >= settings.stowTime && state.pickedUp) {
+				if (state.pickedUp && state.takeIdle) {
+					End();  // in the pouch: the player can move again right away, the rest of the take plays on its own
+					break;
+				}
+				if (state.pickedUp && state.time >= settings.stowTime) {
 					SetPhase(Phase::kReturn);
 					state.cameraIn = false;  // 3rd person: the camera flies back while the empty hand comes back
 				}
@@ -2425,7 +2559,10 @@ namespace Inspect
 				state.cameraBlend = std::clamp(state.cameraBlend + (state.cameraIn ? step : -step), 0.0f, 1.0f);
 				// the body settles into standing, then its animation slows to a stop; it goes on when the camera flies back
 				state.stillClock += a_delta;
-				const float still = settings.standStill && state.cameraIn && state.stillClock >= kIdleSettle ? 1.0f : 0.0f;
+				if (state.takeIdle) {
+					state.takeClock += a_delta;
+				}
+				const float still = settings.standStill && state.cameraIn && !state.takeIdle && state.stillClock >= kIdleSettle ? 1.0f : 0.0f;
 				const float stillStep = a_delta * kStillFollow;
 				state.stillness = std::clamp(state.stillness + std::clamp(still - state.stillness, -stillStep, stillStep), 0.0f, 1.0f);
 			}
@@ -2795,6 +2932,13 @@ namespace Inspect
 					}
 					break;
 				}
+				if (state.thirdPerson && state.takeIdle) {
+					// the vanilla take idle: our hand keeps the hold until the idle's hand comes back to it, then hands the
+					// arm over; the fist stays closed until the item is in the pouch
+					goal.weight = 1.0f - Smooth((state.takeClock - kTakeHandOverFrom) / (kTakeHandOverTo - kTakeHandOverFrom));
+					goal.curl = scaled(1.0f - Smooth((state.takeClock - kTakePocketAt) / kTakeFistOpen));
+					break;
+				}
 				if (state.thirdPerson) {
 					// a little up first, then down in an arc to the right hip, the item slips into the pocket; the return
 					// lets the arm hang back into its own animation from there (the pocket is close to where it hangs)
@@ -2893,7 +3037,8 @@ namespace Inspect
 					if (state.thirdPerson && !settings.stowOverShoulder) {
 						// slips into the pocket: shrinks around its middle until it's gone
 						const float    r = state.time / settings.stowTime;
-						const float    left = std::max(1.0f - Smooth((r - kPocketShrinkFrom) / (kStowPickUpAt - kPocketShrinkFrom)), 0.01f);
+						const float    left = std::max(1.0f - Smooth(state.takeIdle ? (state.takeClock - kTakeShrinkFrom) / (kTakePocketAt - kTakeShrinkFrom) :
+						                                                              (r - kPocketShrinkFrom) / (kStowPickUpAt - kPocketShrinkFrom)), 0.01f);
 						const NiPoint3 middle = carried.translate + carried.rotate * (state.center * carried.scale);
 						carried = ItemAt(middle, carried.rotate, carried.scale * left);
 					}
@@ -2997,12 +3142,12 @@ namespace Inspect
 					return;
 				}
 			}
-			if (state.captureStartOnReturn && !state.cameraIn) {
+			if (!state.cameraIn) {
+				// flying back: to where the game has the camera this frame (the player may look around meanwhile)
 				if (const auto camera = GameCamera()) {
 					state.cameraStart = camera->translate;  // the game just set it, we haven't moved it yet
 					state.cameraStartAxes = CameraAxes(camera->rotate);
 				}
-				state.captureStartOnReturn = false;
 			}
 			const float s = Smooth(state.cameraBlend);
 			PlaceCamera(Lerp(state.cameraStart, frames->view.eye, s), Slerp(state.cameraStartAxes, CameraAxes(frames->view), s));

@@ -15,12 +15,13 @@ OUTPUT = Path(sys.argv[2]) if len(sys.argv) > 2 else ROOT / "dist"
 AUTHOR = "W1ter"
 WEBSITE = "https://github.com/W1terr/Item-Inspection"
 SHOULDER_IMAGE = "fomod/images/over_shoulder.gif"
+POCKET_IMAGE = "fomod/images/pocket.gif"
 
 # (folder in the archive, bStowOverShoulder, option name, type, description, image)
 STOW_OPTIONS = [
     ("Options/Pocket", "0", "Into a pocket", "Recommended",
-     "The hand lifts the item a little, then puts it into a pocket at your right hip, closing into a fist; "
-     "the item slips in and the arm hangs back into its animation.", None),
+     "Your character puts the item into the pouch at the back of the right hip with the game's own take "
+     "animation (IdleTake), the hand closed around it.", POCKET_IMAGE),
     ("Options/Over the shoulder", "1", "Over the shoulder", "Optional",
      "The hand closes around the item, takes it over your right shoulder onto your back and comes back down, "
      "like the vanilla bow sheath.", SHOULDER_IMAGE),
@@ -99,7 +100,11 @@ def main():
         "Core/SKSE/Plugins/ItemInspection/LICENSE.txt": ROOT / "LICENSE",
         "Core/SKSE/Plugins/ItemInspection/CREDITS.txt": ROOT / "res" / "CREDITS.txt",
         SHOULDER_IMAGE: ROOT / "res" / "fomod" / "over_shoulder.gif",
+        POCKET_IMAGE: ROOT / "res" / "fomod" / "pocket.gif",
     }
+    # the translations: one file per language, read by the DLL at the start (English is built in)
+    for lang in sorted((ROOT / "res" / "lang").glob("*.json")):
+        files[f"Core/SKSE/Plugins/ItemInspection/lang/{lang.name}"] = lang
     OUTPUT.mkdir(parents=True, exist_ok=True)
     archive = OUTPUT / f"Item Inspection {version()}.zip"
     with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as zf:

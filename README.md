@@ -11,8 +11,9 @@ When you take an item from the world it doesn't go straight to your inventory:
 2. Move the mouse (or the right stick) to turn the item and look at it from every side. The mouse wheel brings it closer
    or moves it farther. Hold the right mouse button (gamepad RT) to look around; the hand and the item stay put.
 3. Press **E** (gamepad **A**) to put it in your backpack: the item comes down onto your palm, the hand goes down and
-   behind your back (in 3rd person into a pocket at your hip, or over your shoulder: chosen in the installer), and
-   the item is added to the inventory.
+   behind your back (in 3rd person your character puts it into the pouch at the back of the hip with the game's own
+   take animation, or over the shoulder: chosen in the installer), and the item is added to the inventory.
+   The camera is yours again as soon as you press it: you can look around while the hand puts the item away.
    Press **R** (gamepad **B**) to put it back where it was instead.
    Press **F** (gamepad right stick click) to switch between 3rd and 1st person while you hold it (with a short fade).
 
@@ -27,6 +28,8 @@ Afterwards the camera goes back to where it was (or stays in the view you switch
   bars are hidden, and the keys to put the item away or back stay on screen.
 - By default you look at each kind of item only the first time you take it in a playthrough (remembered in the save);
   after that it goes straight into the inventory. Turn on "Show it every time" to always hold items first.
+- In combat or with a weapon or spell drawn, items are picked up the normal way.
+- Turn on "Only in 1st person" to take items the normal way in 3rd person: they go to your hand only in 1st person.
 - Optional "Hold a key to inspect": items go to your hand only when you hold a key (Left Shift / LB by default) while
   you press Activate; a normal press picks them up as usual.
 - In the inventory, scrolling up on an item (the vanilla zoom) closes the inventory and puts the item in your hand.
@@ -55,12 +58,20 @@ that mod's own message box and price; buy it and it goes into your backpack, don
 Taverns, homes and stealing work as that mod does. Turn off "Buy store items when you put them in the backpack" to have
 it ask right away as usual.
 
+## Translations
+
+The menu and the key hint are in English, French, German, Italian, Spanish, Polish, Russian, Japanese and Chinese
+(traditional). The translations are plain files in `Data\SKSE\Plugins\ItemInspection\lang\` (`<language>.json`, English
+text -> translation): fix one there or add a missing text without a new DLL. A text left out stays English.
+
 ## Requirements
 
 - Skyrim SE / AE with [SKSE](https://skse.silverlock.org/) (built against CommonLibSSE-NG, tested on 1.7.104)
 - [Address Library for SKSE Plugins](https://www.nexusmods.com/skyrimspecialedition/mods/32444)
 - Optional: [SKSE Menu Framework](https://www.nexusmods.com/skyrimspecialedition/mods/120352) for the in-game settings
   page (Item Inspection > Settings); without it the settings are in the INI
+  (Data\SKSE\Plugins\ItemInspection.ini = defaults; your own settings are kept in
+  Documents\My Games\Skyrim Special Edition\SKSE\ItemInspection.ini, so mod updates don't reset them)
 
 ## Credits
 
@@ -73,7 +84,8 @@ it ask right away as usual.
 - The telekinesis hand effect, light and grab sound are the vanilla Telekinesis spell's (Skyrim.esm); the fist that
   holds weapons starts from the game's 1st person one-handed idle. Both are used from the game while it runs.
 - The "over the shoulder" stow (3rd person) follows the vanilla bow sheath animation (bow_unequip), mirrored to the
-  right hand: a few positions sampled from it are built into the plugin.
+  right hand: a few positions sampled from it are built into the plugin. The "into a pocket" stow plays the vanilla
+  take idle (IdleTake) from the game.
 
 ## License
 

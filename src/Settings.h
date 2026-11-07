@@ -1,5 +1,7 @@
 #pragma once
 
+#include <filesystem>
+
 // Data\SKSE\Plugins\ItemInspection.ini, edited in game on the SKSE Menu Framework page (src/Menu.cpp)
 namespace Settings
 {
@@ -15,11 +17,11 @@ namespace Settings
 		bool telekinesisSound{ true };  // the grab sound when the item is picked up, put away or put back
 		bool itemSound{ true };         // the item's own pickup sound when it reaches the hand
 		float telekinesisSize{ 2.0f };  // scale of the hand effect (vanilla 1 is barely visible)
-		bool skipInCombat{ true };      // normal pickup while in combat
 		bool skipGold{ true };
 		bool skipAmmo{ true };          // arrows / bolts
 		bool skipWeapons{ false };      // weapons (bows too) go straight into the inventory
 		bool skipArmor{ false };        // armor, clothes and jewelry go straight into the inventory
+		bool firstPersonOnly{ false };  // items go to the hand only in 1st person (3rd person: normal pickup)
 		bool skipHarvest{ false };      // plants: their ingredient goes straight into the inventory (normal harvest)
 		bool buyStoreItems{ true };     // Purchaseable Store-Display-Items: items for sale go to the hand, bought when put in the backpack
 		bool showHint{ true };          // "[E] Put in backpack  [R] Put back" on screen while holding
@@ -140,4 +142,7 @@ namespace Settings
 	Values&       Edit();  // the menu changes values in place, then calls Save()
 	void          Load();
 	bool          Save();  // false: couldn't be written anywhere (logged)
+
+	// Data\SKSE\Plugins, where our DLL is (found from the DLL itself)
+	std::filesystem::path PluginFolder();
 }
