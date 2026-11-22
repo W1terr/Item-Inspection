@@ -12,9 +12,12 @@ When you take an item from the world it doesn't go straight to your inventory:
    or moves it farther. Hold the right mouse button (gamepad RT) to look around; the hand and the item stay put.
 3. Press **E** (gamepad **A**) to put it in your backpack: the item comes down onto your palm, the hand goes down and
    behind your back (in 3rd person your character puts it into the pouch at the back of the hip with the game's own
-   take animation, or over the shoulder: chosen in the installer), and the item is added to the inventory.
-   The camera is yours again as soon as you press it: you can look around while the hand puts the item away.
+   take animation), and the item is added to the inventory.
+   The camera and your movement are yours again as soon as you press it: you can look around and walk on while the
+   hand puts the item away (walking cuts the take animation short and the hand finishes on its own).
    Press **R** (gamepad **B**) to put it back where it was instead.
+   Holding a weapon, press **G** (gamepad **X**) to use it right away: it's equipped and drawn, and your hand goes
+   over to the normal weapon hold.
    Press **F** (gamepad right stick click) to switch between 3rd and 1st person while you hold it (with a short fade).
 
 Afterwards the camera goes back to where it was (or stays in the view you switched to with F).
@@ -30,6 +33,10 @@ Afterwards the camera goes back to where it was (or stays in the view you switch
   after that it goes straight into the inventory. Turn on "Show it every time" to always hold items first.
 - In combat or with a weapon or spell drawn, items are picked up the normal way.
 - Turn on "Only in 1st person" to take items the normal way in 3rd person: they go to your hand only in 1st person.
+- Turn on "Only unique items" to hold only quest items, enchanted items, Daedric artifacts and Daedric weapons; the rest
+  is picked up as usual.
+- The key hint's place on screen and its size can be set in the menu ("Show the hint on screen" shows it while you
+  move the sliders).
 - Optional "Hold a key to inspect": items go to your hand only when you hold a key (Left Shift / LB by default) while
   you press Activate; a normal press picks them up as usual.
 - In the inventory, scrolling up on an item (the vanilla zoom) closes the inventory and puts the item in your hand.
@@ -61,7 +68,7 @@ it ask right away as usual.
 ## Translations
 
 The menu and the key hint are in English, French, German, Italian, Spanish, Polish, Russian, Japanese and Chinese
-(traditional). The translations are plain files in `Data\SKSE\Plugins\ItemInspection\lang\` (`<language>.json`, English
+(traditional and simplified). The translations are plain files in `Data\SKSE\Plugins\ItemInspection\lang\` (`<language>.json`, English
 text -> translation): fix one there or add a missing text without a new DLL. A text left out stays English.
 
 ## Requirements

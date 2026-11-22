@@ -41,8 +41,17 @@ namespace Inspect
 			kStow,        // hand goes down and behind the back (3rd person: into a pocket at the hip), item goes into the inventory
 			kReturn,      // empty hand comes back to the normal pose
 			kPutBack,     // item goes back where it was, hand lowers
-			kFadeBack,    // back to 3rd person: fading to black before the switch
+			kEquip,       // a weapon: into the inventory, equipped and drawn, then the hand gives it to the game's own hold
+			kFadeBack,   // back to 3rd person: fading to black before the switch
 			kCameraBack   // staying in 3rd person: the camera flies back from over the shoulder
+		};
+
+		enum class EquipStep
+		{
+			kTake,   // waiting for the item in the inventory (and for a theft to be seen)
+			kEquip,  // equipped: waiting until it's in the hand slots, then drawing
+			kDraw,   // the game draws it (our hand still holds the copy)
+			kBlend   // drawn: our hand and the copy go over to the game's
 		};
 
 		enum class Source
@@ -91,7 +100,10 @@ namespace Inspect
 		constexpr float kTakeHandOverTo = 1.1f;    // ... from here the idle moves the arm (and the item in the fist)
 		constexpr float kTakeShrinkFrom = 1.3f;    // the item slips into the pouch...
 		constexpr float kTakePocketAt = 1.55f;     // ... and is in the backpack
+		constexpr float kTakeLength = 2.33f;       // the idle's end
 		constexpr float kTakeFistOpen = 0.4f;      // seconds the fist takes to let go after that (if still posed)
+		constexpr float kTakeCutBlend = 0.25f;     // the player moved: seconds our hand takes to hold the arm fully again
+		constexpr float kMoveInput = 0.1f;         // movement keys / stick pushed at least this far
 		// Or (bStowOverShoulder) over the right shoulder onto the back and down again, like the vanilla bow sheath
 		// (bow_unequip.hkx: its left hand lays the bow on the back), mirrored to the right hand. Sampled every 0.05 s from
 		// 0.30 s (hand up in front) to the end, eye space (right, forward, up), with the elbow's direction (from the middle
@@ -252,6 +264,8 @@ namespace Inspect
 			bool                          searching{ false };  // the searching animation plays
 			bool                          takeIdle{ false };   // 3rd person stow: the vanilla take idle plays (kTake*)
 			float                         takeClock{ 0.0f };   // seconds since it started
+			float                         takeCutClock{ -1.0f };  // the player moved during it: seconds since it was cut (< 0 = not cut)
+			float                         takeCutWeight{ 1.0f };  // ... and how much our hand still held the arm then
 			float                         searchTime{ 0.0f };
 			float                         searchHeading{ 0.0f };  // facing the container
 
@@ -336,9 +350,22 @@ namespace Inspect
 			float wheel{ 0.0f };
 			bool  storeRequested{ false };
 			bool  putBackRequested{ false };
+			bool  equipRequested{ false };
 			bool  hudModePushed{ false };
+
+			// kEquip: the weapon put in the inventory, equipped and drawn. Our copy stays in the hand (the real weapon
+			// hidden) until it's drawn, then the hand blends into the game's hold and the copy onto the real weapon.
+			EquipStep                                  equipStep{ EquipStep::kTake };
+			float                                      equipClock{ 0.0f };  // in the current step
+			RE::EnchantmentItem*                       wantedEnchantment{ nullptr };  // which of the inventory's stacks is this one
+			float                                      wantedHealth{ 1.0f };          // (tempering)
+			std::vector<RE::NiPointer<RE::NiAVObject>> hiddenEquipped;  // the real weapon's models, hidden until the swap
+			bool                                       movementFreed{ false };  // put away / equipping: the player moves again
 		};
 		State state;
+
+		// seconds until the take idle (3rd person pocket) that outlived its inspection is over, -1 = none
+		float takeIdleLeft{ -1.0f };
 
 		RE::PlayerCharacter* Player() { return RE::PlayerCharacter::GetSingleton(); }
 
@@ -499,23 +526,35 @@ namespace Inspect
 
 		// ---- hint ----
 
+		bool CanEquip();
+
+		std::string HintText(const std::string& a_name, bool a_forSale, bool a_putBack, bool a_equip)
+		{
+			const auto& settings = Settings::Get();
+			const auto  input = RE::BSInputDeviceManager::GetSingleton();
+			const bool  gamepad = input && input->IsGamepadEnabled();
+			const auto  store = Keys::Name(gamepad ? settings.storeGamepadKey : settings.storeKey);
+			const auto  putBack = Keys::Name(gamepad ? settings.putBackGamepadKey : settings.putBackKey);
+			std::string text = a_name.empty() ? "" : a_name + "    ";
+			const char* storeText = Lang::T(a_forSale ? "Buy" : "Put in backpack");
+			text += a_putBack ? std::format("[{}] {}    [{}] {}", store, storeText, putBack, Lang::T("Put back")) : std::format("[{}] {}", store, storeText);
+			if (a_equip) {
+				const auto equip = Keys::Name(gamepad ? settings.equipGamepadKey : settings.equipKey);
+				text += std::format("    [{}] {}", equip, Lang::T("Equip"));
+			}
+			const auto switchView = Keys::Name(gamepad ? settings.switchViewGamepadKey : settings.switchViewKey);
+			text += std::format("    [{}] {}", switchView, Lang::T("Switch view"));
+			return text;
+		}
+
 		void ShowHint()
 		{
 			const auto& settings = Settings::Get();
 			if (!settings.showHint) {
 				return;
 			}
-			const auto input = RE::BSInputDeviceManager::GetSingleton();
-			const bool gamepad = input && input->IsGamepadEnabled();
-			const auto store = Keys::Name(gamepad ? settings.storeGamepadKey : settings.storeKey);
-			const auto putBack = Keys::Name(gamepad ? settings.putBackGamepadKey : settings.putBackKey);
-			std::string text = state.name.empty() ? "" : state.name + "    ";
-			const char* storeText = Lang::T(state.forSale ? "Buy" : "Put in backpack");
-			text += state.source != Source::kInventory ? std::format("[{}] {}    [{}] {}", store, storeText, putBack, Lang::T("Put back")) :
-			                                         std::format("[{}] {}", store, storeText);
-			const auto switchView = Keys::Name(gamepad ? settings.switchViewGamepadKey : settings.switchViewKey);
-			text += std::format("    [{}] {}", switchView, Lang::T("Switch view"));
-			HUD::ShowHint(text);  // stays until the item is put away
+			const auto text = HintText(state.name, state.forSale, state.source != Source::kInventory, CanEquip());
+			HUD::ShowHint(text, settings.hintX, settings.hintY, settings.hintSize);  // stays until the item is put away
 		}
 
 		// ---- controls ----
@@ -868,6 +907,8 @@ namespace Inspect
 			cameraArmsMissing = false;
 		}
 
+		void ShowEquipped();
+
 		void Finish()
 		{
 			ShowCameraArms(false);
@@ -885,9 +926,7 @@ namespace Inspect
 			DetachItem();
 			ShowWorldModel();
 			RestoreControls();
-			if (state.hiddenWeapon) {
-				state.hiddenWeapon->SetAppCulled(false);
-			}
+			ShowEquipped();  // also the weapon node hidden at the start
 			SmoothCam::GiveBack();  // also after a switch to 1st person: we keep it until the end
 			if (state.wasThirdPerson) {
 				if (const auto camera = RE::PlayerCamera::GetSingleton(); camera && camera->IsInFirstPerson()) {
@@ -972,6 +1011,24 @@ namespace Inspect
 			}
 		}
 
+		// "Only unique items": quest items, enchanted items (staves too), Daedric artifacts and Daedric weapons.
+		// a_questItem / a_extra: what the reference / the container's stack says about this one item.
+		bool UniqueEnough(const RE::TESForm* a_base, bool a_questItem, const RE::ExtraDataList* a_extra)
+		{
+			if (!Settings::Get().uniqueOnly || a_questItem) {
+				return true;
+			}
+			if (const auto enchantable = a_base->As<RE::TESEnchantableForm>(); enchantable && enchantable->formEnchanting) {
+				return true;
+			}
+			if (a_extra && a_extra->HasType<RE::ExtraEnchantment>()) {
+				return true;  // enchanted by the player / a leveled list
+			}
+			const auto keywords = a_base->As<RE::BGSKeywordForm>();
+			return keywords && (keywords->HasKeywordString("VendorItemDaedricArtifact") ||
+			                       (a_base->IsWeapon() && keywords->HasKeywordString("WeapMaterialDaedric")));
+		}
+
 		// a_forSale: an item for sale (Purchaseable Store-Display-Items), bought when it goes into the backpack: no theft
 		bool CanInspect(RE::PlayerCharacter* a_player, RE::TESObjectREFR* a_ref, bool a_forSale = false)
 		{
@@ -985,6 +1042,9 @@ namespace Inspect
 			}
 			if (!settings.alwaysInspect && Seen::Contains(base->GetFormID())) {
 				return false;  // looked at this kind of item before
+			}
+			if (!UniqueEnough(base, a_ref->HasQuestObject(), &a_ref->extraList)) {
+				return false;  // "Only unique items": a common one
 			}
 			if (!a_forSale && !settings.inspectStolen && a_ref->IsCrimeToActivate()) {
 				return false;  // stealing: normal pickup
@@ -1661,6 +1721,9 @@ namespace Inspect
 			if (!settings.inspectStolen && a_item.stealing) {
 				return false;
 			}
+			if (!UniqueEnough(a_item.object, a_item.extraList && a_item.extraList->HasQuestObjectAlias(), a_item.extraList)) {
+				return false;
+			}
 			const auto container = a_item.container.get();
 			if (!container || (settings.bigChestsOnly ? !IsBigChest(container.get()) : !settings.lootBodies && IsBody(container.get()))) {
 				return false;  // the settings leave this kind of container to QuickLoot
@@ -1778,7 +1841,7 @@ namespace Inspect
 		bool CanInspectHarvest(RE::PlayerCharacter* a_player, RE::TESObjectREFR* a_plant, RE::TESBoundObject* a_produce)
 		{
 			const auto& settings = Settings::Get();
-			if (!settings.enabled || settings.skipHarvest || Active() || harvestPending || !InspectKeyAllows() || !a_produce || !KindInspected(a_produce) ||
+			if (!settings.enabled || settings.skipHarvest || settings.uniqueOnly || Active() || harvestPending || !InspectKeyAllows() || !a_produce || !KindInspected(a_produce) ||
 				a_plant->IsDisabled() || Harvested(a_plant) || !a_plant->Get3D()) {
 				return false;
 			}
@@ -2185,6 +2248,60 @@ namespace Inspect
 			}
 		}
 
+		// the player pushes the movement keys / stick (read even while an idle holds the legs still)
+		bool MoveInput()
+		{
+			const auto controls = RE::PlayerControls::GetSingleton();
+			if (!controls) {
+				return false;
+			}
+			const auto& move = controls->data.moveInputVec;
+			return move.x * move.x + move.y * move.y > kMoveInput * kMoveInput;
+		}
+
+		// The take idle holds the legs still until it ends. The player wants to walk: the idle is cut and our own hand
+		// takes the item on to the pocket from about where the idle's hand was, while the legs walk.
+		void CutTakeIdle()
+		{
+			const float handOver = Smooth((state.takeClock - kTakeHandOverFrom) / (kTakeHandOverTo - kTakeHandOverFrom));
+			const float progress = Clamp01((state.takeClock - kTakeHandOverFrom) / (kTakePocketAt - kTakeHandOverFrom));
+			state.takeCutWeight = 1.0f - handOver;
+			state.takeCutClock = 0.0f;
+			state.takeIdle = false;
+			state.time = progress * kStowPickUpAt * Settings::Get().stowTime;  // the pocket path from that far on
+			Player()->NotifyAnimationGraph("IdleForceDefaultState");
+			logs::info("Moving during the take animation ({:.2f} s in): cut, the hand goes on to the pocket", state.takeClock);
+		}
+
+		// Put in the backpack / equipped: the player walks, runs, jumps and sneaks again right away while the hand
+		// finishes on its own (the body's freeze lets go too)
+		void FreeMovement()
+		{
+			if (state.movementFreed) {
+				return;
+			}
+			state.movementFreed = true;
+			state.stillness = 0.0f;
+			if (state.movementOpened) {
+				BlockMovementKeys(false);
+				state.movementOpened = false;
+			}
+			if (state.sneakKeyBlocked) {
+				if (const auto playerControls = RE::PlayerControls::GetSingleton(); playerControls && playerControls->sneakHandler) {
+					playerControls->sneakHandler->SetInputEventHandlingEnabled(true);
+				}
+				state.sneakKeyBlocked = false;
+			}
+			const auto controls = RE::ControlMap::GetSingleton();
+			for (const auto flag : { Flag::kMovement, Flag::kJumping }) {
+				const auto found = std::ranges::find(state.disabledControls, flag);
+				if (controls && found != state.disabledControls.end()) {
+					controls->ToggleControls(flag, true, false);
+					state.disabledControls.erase(found);
+				}
+			}
+		}
+
 		// the hand stops holding: the item goes into the backpack (kStow) or back where it was (kPutBack)
 		void LeaveHold(Phase a_next)
 		{
@@ -2192,6 +2309,7 @@ namespace Inspect
 				WakeWorldForTheft();
 				StartTakeIdle();
 				FreeCamera();
+				FreeMovement();
 			}
 			StopLooking(false);
 			state.inHandSet = false;
@@ -2206,6 +2324,257 @@ namespace Inspect
 			} else {
 				state.afterSettle = a_next;
 				SetPhase(Phase::kSettle);
+			}
+		}
+
+		// the held item goes into the inventory now (picked up / taken out of the container / harvested)
+		void PutInInventory()
+		{
+			const bool world = state.source == Source::kWorld;
+			state.pickedUp = true;
+			if (world && state.bought) {
+				Seen::Add(state.baseID);  // the store's script already put it in the inventory
+			} else if (world) {
+				auto hidden = state.worldModel;
+				state.worldModel.reset();
+				PickUpNow(state.ref, state.count, state.arg3, state.playSound, hidden);
+				Seen::Add(state.baseID);
+			} else if (state.source == Source::kContainer) {
+				GiveContainerItem(state.take);
+				ContainerLid::Release(state.ref);
+				Seen::Add(state.baseID);
+			} else if (state.source == Source::kHarvest) {
+				HarvestNow(state.ref, state.harvest);
+				Seen::Add(state.baseID);
+			}
+		}
+
+		// ---- a held weapon used right away (bEquipWeapons): into the inventory, equipped and drawn ----
+
+		constexpr float kEquipWait = 1.0f;     // seconds for the equip to show in the hand slots
+		constexpr float kDrawWait = 3.0f;      // ... and for the draw
+		constexpr float kEquipBlend = 0.7f;    // seconds our hand and the copy take to go over to the game's hold (from
+		                                       // when the drawing hand has the real weapon, while it swings it up)
+		constexpr float kEquipTimeout = kEquipWait + kDrawWait + kEquipBlend + 2.0f;
+
+		bool CanEquip()
+		{
+			return Settings::Get().equipWeapons && state.weapon && !(state.forSale && !state.bought);
+		}
+
+		// which of the inventory's lists of this item is the one in the hand: the same enchantment and tempering
+		RE::ExtraDataList* HeldItemList(RE::PlayerCharacter* a_player, RE::TESBoundObject* a_object)
+		{
+			const auto changes = a_player->GetInventoryChanges();
+			if (!changes || !changes->entryList) {
+				return nullptr;
+			}
+			for (const auto entry : *changes->entryList) {
+				if (!entry || entry->object != a_object || !entry->extraLists) {
+					continue;
+				}
+				for (const auto list : *entry->extraLists) {
+					if (!list) {
+						continue;
+					}
+					const auto enchantment = list->GetByType<RE::ExtraEnchantment>();
+					const auto health = list->GetByType<RE::ExtraHealth>();
+					if ((enchantment ? enchantment->enchantment : nullptr) == state.wantedEnchantment &&
+						std::abs((health ? health->health : 1.0f) - state.wantedHealth) < 1e-3f) {
+						return list;
+					}
+				}
+			}
+			return nullptr;  // a plain one (the game picks)
+		}
+
+		bool Equipped(RE::PlayerCharacter* a_player, const RE::TESBoundObject* a_object)
+		{
+			return a_player->GetEquippedObject(false) == a_object || a_player->GetEquippedObject(true) == a_object;
+		}
+
+		void Equip(RE::PlayerCharacter* a_player, RE::TESBoundObject* a_object)
+		{
+			const auto              weapon = a_object->As<RE::TESObjectWEAP>();
+			const RE::BGSEquipSlot* slot = nullptr;  // two-handed weapons and bows: both hands
+			if (weapon && (weapon->IsOneHandedSword() || weapon->IsOneHandedDagger() || weapon->IsOneHandedAxe() || weapon->IsOneHandedMace() ||
+							  weapon->IsStaff())) {
+				slot = RE::BGSDefaultObjectManager::GetSingleton()->GetObject<RE::BGSEquipSlot>(RE::DEFAULT_OBJECT::kRightHandEquip);  // the hand holding it
+			}
+			RE::ActorEquipManager::GetSingleton()->EquipObject(a_player, a_object, HeldItemList(a_player, a_object), 1, slot, false, false, true, true);
+		}
+
+		// the real weapon's models (1st and 3rd person) stay hidden while our copy is in the hand
+		void HideEquipped(const RE::TESBoundObject* a_object)
+		{
+			const auto player = Player();
+			for (const bool firstPerson : { false, true }) {
+				const auto& biped = player->GetBiped(firstPerson);
+				if (!biped) {
+					continue;
+				}
+				for (int i = RE::BIPED_OBJECT::kOneHandSword; i <= RE::BIPED_OBJECT::kCrossbow; ++i) {
+					const auto& part = biped->objects[i];
+					if (part.item == a_object && part.partClone && !part.partClone->GetAppCulled()) {
+						part.partClone->SetAppCulled(true);
+						state.hiddenEquipped.emplace_back(part.partClone);
+					}
+				}
+			}
+		}
+
+		void ShowEquipped()
+		{
+			for (const auto& node : state.hiddenEquipped) {
+				node->SetAppCulled(false);
+			}
+			state.hiddenEquipped.clear();
+			if (state.hiddenWeapon) {
+				state.hiddenWeapon->SetAppCulled(false);
+				state.hiddenWeapon.reset();
+			}
+		}
+
+		// where the real weapon is drawn (in the skeleton our arm poses), for the copy to go onto it
+		std::optional<NiTransform> EquippedWorld()
+		{
+			const auto player = Player();
+			const auto object = RE::TESForm::LookupByID(state.baseID);
+			const auto& biped = player ? player->GetBiped(!state.thirdPerson) : RE::BSTSmartPointer<RE::BipedAnim>{};
+			if (!biped || !object) {
+				return std::nullopt;
+			}
+			for (int i = RE::BIPED_OBJECT::kOneHandSword; i <= RE::BIPED_OBJECT::kCrossbow; ++i) {
+				const auto& part = biped->objects[i];
+				if (part.item == object && part.partClone) {
+					return part.partClone->world;
+				}
+			}
+			return std::nullopt;
+		}
+
+		// The draw animation has taken the real weapon out of its sheath node (WeaponSword, WeaponBack, ...) into a hand
+		// (WEAPON, a bow: SHIELD): from here the animated hand swings it into the drawn pose, which our hand blends into
+		bool EquippedInHand()
+		{
+			const auto  player = Player();
+			const auto  object = RE::TESForm::LookupByID(state.baseID);
+			const auto& biped = player ? player->GetBiped(!state.thirdPerson) : RE::BSTSmartPointer<RE::BipedAnim>{};
+			if (!biped || !object) {
+				return false;
+			}
+			for (int i = RE::BIPED_OBJECT::kOneHandSword; i <= RE::BIPED_OBJECT::kCrossbow; ++i) {
+				const auto& part = biped->objects[i];
+				if (part.item != object || !part.partClone) {
+					continue;
+				}
+				auto node = part.partClone->parent;
+				for (int depth = 0; node && depth < 3; ++depth, node = node->parent) {
+					const std::string_view name = node->name.c_str();
+					if (name == "WEAPON" || name == "SHIELD") {
+						return true;
+					}
+					if (name.starts_with("Weapon") || name.starts_with("NPC ")) {
+						return false;  // a sheath, or past it into the skeleton
+					}
+				}
+			}
+			return false;
+		}
+
+		void BeginEquip()
+		{
+			// which stack in the inventory will be this one
+			const RE::ExtraDataList* extra = nullptr;
+			const auto               ref = state.ref.get();
+			if (state.source == Source::kWorld && ref) {
+				extra = &ref->extraList;
+			} else if (state.source == Source::kContainer) {
+				extra = state.take.extraList;
+			}
+			if (extra) {
+				if (const auto enchantment = extra->GetByType<RE::ExtraEnchantment>()) {
+					state.wantedEnchantment = enchantment->enchantment;
+				}
+				if (const auto health = extra->GetByType<RE::ExtraHealth>()) {
+					state.wantedHealth = health->health;
+				}
+			}
+			const auto object = RE::TESForm::LookupByID<RE::TESBoundObject>(state.baseID);
+			state.countBefore = object ? ItemCount(object) : 0;
+			WakeWorldForTheft();  // first: a theft is only seen once the world runs
+			WorldPause::End();    // a drawn weapon: the world goes on
+			StopLooking(false);
+			FreeCamera();
+			FreeMovement();
+			if (const auto controls = RE::ControlMap::GetSingleton()) {
+				const auto fighting = std::ranges::find(state.disabledControls, Flag::kFighting);
+				if (fighting != state.disabledControls.end()) {
+					controls->ToggleControls(Flag::kFighting, true, false);
+					state.disabledControls.erase(fighting);
+				}
+			}
+			state.equipStep = EquipStep::kTake;
+			state.equipClock = 0.0f;
+			logs::info("Equipping it");
+			SetPhase(Phase::kEquip);
+		}
+
+		void UpdateEquip(RE::PlayerCharacter* a_player, float a_delta)
+		{
+			const auto object = RE::TESForm::LookupByID<RE::TESBoundObject>(state.baseID);
+			if (!object) {
+				Finish();
+				return;
+			}
+			state.equipClock += a_delta;
+			HideEquipped(object);
+			const auto next = [](EquipStep a_step) {
+				state.equipStep = a_step;
+				state.equipClock = 0.0f;
+			};
+			switch (state.equipStep) {
+			case EquipStep::kTake:
+				if (!state.pickedUp && TheftSeen()) {
+					PutInInventory();
+				}
+				// (a world pickup happens in a task: the count shows it)
+				if (state.pickedUp && (state.source == Source::kInventory || state.bought || ItemCount(object) > state.countBefore)) {
+					Equip(a_player, object);
+					next(EquipStep::kEquip);
+				}
+				break;
+			case EquipStep::kEquip:
+				if (Equipped(a_player, object)) {
+					a_player->DrawWeaponMagicHands(true);
+					next(EquipStep::kDraw);
+				} else if (state.equipClock > kEquipWait) {
+					logs::warn("The weapon couldn't be equipped: it stays in the inventory");
+					DetachItem();
+					ShowEquipped();
+					End();
+				}
+				break;
+			case EquipStep::kDraw:
+				{
+					const bool inHand = EquippedInHand();
+					const bool drawn = a_player->AsActorState()->GetWeaponState() == RE::WEAPON_STATE::kDrawn;
+					if (inHand || drawn || state.equipClock > kDrawWait) {
+						logs::info("Blending into the drawn weapon {:.2f} s into the draw ({})", state.equipClock,
+							inHand ? "out of the sheath" : drawn ? "drawn" : "waited too long");
+						state.cameraIn = false;  // 3rd person: the camera flies back meanwhile
+						next(EquipStep::kBlend);
+					}
+				}
+				break;
+			case EquipStep::kBlend:
+				if (state.equipClock >= kEquipBlend) {
+					DetachItem();  // the copy lies on the real weapon now: swapped
+					ShowEquipped();
+					logs::info("Equipped and drawn");
+					End();
+				}
+				break;
 			}
 		}
 
@@ -2285,6 +2654,8 @@ namespace Inspect
 				return kMaxLootingWait + a_settings.searchTime + kSearchStandUp + kSlack;
 			case Phase::kBuying:
 				return kBuyTimeout + kSlack;
+			case Phase::kEquip:
+				return kEquipTimeout + kSlack;
 			case Phase::kFadeOut:
 			case Phase::kFadeBack:
 				return kMaxFadeWait + kSlack;
@@ -2297,11 +2668,44 @@ namespace Inspect
 			}
 		}
 
+		// The take idle doesn't hand the body back to its normal idle by itself: the arms stayed in its end pose until a
+		// jump or a weapon draw reset the animation. At its end the body is sent back to the default state, unless the
+		// player already does something that resets it anyway (or that it would cut).
+		void UpdateTakeIdleEnd(float a_delta)
+		{
+			if (takeIdleLeft < 0.0f) {
+				return;
+			}
+			takeIdleLeft -= a_delta;
+			// the idle holds the legs still until its end: moving cuts the rest of it
+			const bool moving = MoveInput();
+			if (takeIdleLeft > 0.0f && !moving) {
+				return;
+			}
+			takeIdleLeft = -1.0f;
+			const auto player = Player();
+			if (!player || Active()) {
+				return;
+			}
+			const auto actorState = player->AsActorState();
+			bool       jumping = false;
+			player->GetGraphVariableBool("bInJumpState", jumping);
+			if (player->IsDead() || player->IsSneaking() || player->IsOnMount() || player->IsInKillMove() || player->IsInMidair() || jumping ||
+				actorState->IsWeaponDrawn() || actorState->IsSwimming() || actorState->IsSprinting() ||
+				actorState->GetSitSleepState() != RE::SIT_SLEEP_STATE::kNormal || actorState->GetKnockState() != RE::KNOCK_STATE_ENUM::kNormal) {
+				logs::info("The take animation ended while the player was busy: left as it is");
+				return;
+			}
+			player->NotifyAnimationGraph("IdleForceDefaultState");
+			logs::info("{}", moving ? "Moving: the rest of the take animation is cut" : "The take animation ended: the body is back in its normal idle");
+		}
+
 		void OnPlayerUpdate(float a_delta)
 		{
 			Telekinesis::Update(a_delta);
 			ContainerLid::Update(a_delta);
 			Fade::Update(a_delta);
+			UpdateTakeIdleEnd(a_delta);
 			if (!Active()) {
 				return;
 			}
@@ -2446,6 +2850,12 @@ namespace Inspect
 					break;
 				}
 				state.switchRequested = false;
+				if (state.equipRequested && !state.storeRequested && !state.putBackRequested && CanEquip()) {
+					state.equipRequested = false;
+					BeginEquip();
+					break;
+				}
+				state.equipRequested = false;
 				if (state.storeRequested || state.putBackRequested) {
 					// an inventory item has nowhere else to go than the backpack
 					const Phase next = state.storeRequested || state.source == Source::kInventory ? Phase::kStow : Phase::kPutBack;
@@ -2489,31 +2899,22 @@ namespace Inspect
 				}
 				break;
 			case Phase::kStow:
+				if (state.takeIdle && !state.pickedUp && MoveInput()) {
+					CutTakeIdle();
+				}
 				if (!state.pickedUp && (state.takeIdle ? state.takeClock >= kTakePocketAt : state.time >= settings.stowTime * kStowPickUpAt) && TheftSeen()) {
-					state.pickedUp = true;
 					DetachItem();
-					if (world && state.bought) {
-						Seen::Add(state.baseID);  // the store's script already put it in the inventory
-					} else if (world) {
-						auto hidden = state.worldModel;
-						state.worldModel.reset();
-						PickUpNow(state.ref, state.count, state.arg3, state.playSound, hidden);
-						Seen::Add(state.baseID);
-					} else if (container) {
-						GiveContainerItem(state.take);
-						ContainerLid::Release(state.ref);
-						Seen::Add(state.baseID);
-					} else if (harvest) {
-						HarvestNow(state.ref, state.harvest);
-						Seen::Add(state.baseID);
-					}
+					PutInInventory();
 					// from the player's body, not the 1st person hand: the hand is on its way out of view and the camera
 					// goes back to 3rd person right after, and a sound following the hand jumped with it (broken sound)
 					PlayTelekinesisSound(player->Get3D(false));
 					logs::info("Put in the backpack");
 				}
 				if (state.pickedUp && state.takeIdle) {
-					End();  // in the pouch: the player can move again right away, the rest of the take plays on its own
+					// in the pouch: the inspection is over, the rest of the take plays on its own; at its end the body is
+					// sent back to its normal idle (it stays in the take's end pose otherwise)
+					takeIdleLeft = std::max(kTakeLength - state.takeClock, 0.0f);
+					End();
 					break;
 				}
 				if (state.pickedUp && state.time >= settings.stowTime) {
@@ -2525,6 +2926,9 @@ namespace Inspect
 				if (state.time >= settings.returnTime) {
 					End();
 				}
+				break;
+			case Phase::kEquip:
+				UpdateEquip(player, a_delta);
 				break;
 			case Phase::kCameraBack:
 				if (state.cameraBlend <= 0.0f) {
@@ -2562,6 +2966,9 @@ namespace Inspect
 				if (state.takeIdle) {
 					state.takeClock += a_delta;
 				}
+				if (state.takeCutClock >= 0.0f) {
+					state.takeCutClock += a_delta;
+				}
 				const float still = settings.standStill && state.cameraIn && !state.takeIdle && state.stillClock >= kIdleSettle ? 1.0f : 0.0f;
 				const float stillStep = a_delta * kStillFollow;
 				state.stillness = std::clamp(state.stillness + std::clamp(still - state.stillness, -stillStep, stillStep), 0.0f, 1.0f);
@@ -2576,6 +2983,7 @@ namespace Inspect
 				// a press while the hand comes up counts once it's up
 				state.storeRequested = false;
 				state.putBackRequested = false;
+				state.equipRequested = false;
 			}
 		}
 
@@ -2964,6 +3372,11 @@ namespace Inspect
 						goal.weight = 1.0f - Smooth(state.time / settings.returnTime);
 						goal.curl = scaled(goal.weight);
 					}
+					if (state.takeCutClock >= 0.0f) {
+						// the take idle was cut: from how much our hand still held the arm back to holding it fully
+						const float back = state.takeCutWeight + (1.0f - state.takeCutWeight) * Smooth(state.takeCutClock / kTakeCutBlend);
+						goal.weight = std::min(goal.weight, back);
+					}
 					break;
 				} else {
 					const float s = state.phase == Phase::kStow ? Smooth(state.time / settings.stowTime) : 1.0f;
@@ -2989,6 +3402,13 @@ namespace Inspect
 			case Phase::kPutBack:
 				goal.weight = 1.0f - Smooth(state.time / settings.returnTime);
 				goal.curl = scaled(goal.weight);
+				break;
+			case Phase::kEquip:
+				// the hand keeps the weapon up while the game equips and draws it, then goes over to the drawn hold
+				if (state.equipStep == EquipStep::kBlend) {
+					goal.weight = 1.0f - Smooth(state.equipClock / kEquipBlend);
+					goal.curl = scaled(goal.weight);
+				}
 				break;
 			default:
 				break;
@@ -3052,6 +3472,17 @@ namespace Inspect
 					PlaceItem(Blend(HeldItem(*hand, a_view), state.start, t));
 					break;
 				}
+			case Phase::kEquip:
+				if (state.equipStep != EquipStep::kBlend) {
+					PlaceItem(HeldItem(*hand, a_view));
+				} else {
+					// onto the real (hidden) weapon: in the hand that draws it (a bow: the left one), else the plain
+					// WEAPON node grip
+					const auto  real = EquippedWorld();
+					const float t = Smooth(state.equipClock / kEquipBlend);
+					PlaceItem(Blend(HeldItem(*hand, a_view), real ? *real : Combine(hand->world, state.weaponNode), t));
+				}
+				break;
 			default:
 				break;
 			}
@@ -3297,6 +3728,8 @@ namespace Inspect
 								state.storeRequested = true;
 							} else if (code == settings.putBackKey || code == settings.putBackGamepadKey) {
 								state.putBackRequested = true;
+							} else if (code == settings.equipKey || code == settings.equipGamepadKey) {
+								state.equipRequested = state.phase == Phase::kHold;
 							}
 							break;
 						}
@@ -3401,6 +3834,7 @@ namespace Inspect
 		HeadLook::Forget();
 		ContainerLid::Forget();
 		searchedContainer = 0;
+		takeIdleLeft = -1.0f;
 		forSaleRef = {};
 		forSaleAsked = {};
 		ForgetCameraArms();
@@ -3440,5 +3874,13 @@ namespace Inspect
 		if (a_container.native_handle() != searchedContainer.load()) {
 			searchedContainer = 0;
 		}
+	}
+
+	std::optional<std::string> PreviewHintText()
+	{
+		if (Active()) {
+			return std::nullopt;  // the real hint is on screen
+		}
+		return HintText(Lang::T("Example item"), false, true, Settings::Get().equipWeapons);
 	}
 }

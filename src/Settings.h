@@ -25,10 +25,14 @@ namespace Settings
 		bool skipHarvest{ false };      // plants: their ingredient goes straight into the inventory (normal harvest)
 		bool buyStoreItems{ true };     // Purchaseable Store-Display-Items: items for sale go to the hand, bought when put in the backpack
 		bool showHint{ true };          // "[E] Put in backpack  [R] Put back" on screen while holding
+		float hintX{ 100.0f };          // where the hint is: percent of the screen from the left (0 = left edge, 100 = right edge)
+		float hintY{ 5.0f };            // ... and from the top
+		float hintSize{ 18.0f };        // its font size
+		bool uniqueOnly{ false };       // only quest items, enchanted items, Daedric artifacts and Daedric weapons go to the hand
 		bool worldWaits{ true };        // nobody talks to you, attacks or hurts you while you hold an item (AI paused)
 		bool fadeTransition{ true };    // short fade to black when the camera switches between 3rd and 1st person
 		float fadeTime{ 0.2f };         // seconds to black (back is 1.5x)
-		int   language{ 0 };            // 0 = the game's language, 1..9 = English, French, German, Italian, Spanish, Polish, Russian, Japanese, Chinese
+		int   language{ 0 };            // 0 = the game's language, 1..10 = English, French, German, Italian, Spanish, Polish, Russian, Japanese, Chinese (traditional), Chinese (simplified)
 
 		// [Controls] keys: keyboard = DirectInput scan code, mouse = 256 + button, gamepad = SKSE code 266-281
 		int   storeKey{ 18 };            // E
@@ -39,6 +43,8 @@ namespace Settings
 		int   lookGamepadKey{ 281 };     // RT: held, the right stick turns the head
 		int   switchViewKey{ 33 };       // F: switches between 3rd and 1st person while holding (with the fade)
 		int   switchViewGamepadKey{ 273 };  // RS (right stick click), like the game's own view switch
+		int   equipKey{ 34 };            // G: a held weapon is equipped and drawn (bEquipWeapons)
+		int   equipGamepadKey{ 278 };    // X, the game's ready weapon button
 		bool  holdKeyToInspect{ false };  // items go to the hand only when this key is held while pressing Activate
 		int   inspectKey{ 42 };          // Left Shift
 		int   inspectGamepadKey{ 274 };  // LB
@@ -66,12 +72,13 @@ namespace Settings
 		float weaponLeanLeft{ 5.0f };      // blade tipped towards the left
 		float weaponLeanForward{ 16.0f };  // blade tipped away from you
 		float weaponRoll{ 12.0f };         // turned around the blade
+		bool  equipWeapons{ true };        // the equip key takes a held weapon straight into your hand, drawn
 		// the weapon in the fist (models whose grip sits elsewhere, e.g. held at the crossguard): + slides the hand towards the
 		// pommel (units), turns the weapon around the blade / tilts it in the fist (degrees). 1st person, then 3rd person
 		float gripSlide{ 7.0f };
 		float gripTurn{ 0.0f };
 		float gripTilt{ 0.0f };
-		float bodyGripSlide{ 7.0f };
+		float bodyGripSlide{ 5.3f };
 		float bodyGripTurn{ 0.0f };
 		float bodyGripTilt{ 0.0f };
 		// [Bows] bows and crossbows: held further out (about arm's length) and more upright, so more of them is in view
@@ -93,13 +100,13 @@ namespace Settings
 		bool  standStill{ true };  // the body's animation (idles too) settles and stops while the item is held
 		bool  headLook{ true };    // the head turns to look at the item in the hand
 		bool  stowOverShoulder{ false };  // the hand puts the item over the shoulder (like the bow sheath), not into a pocket
-		float bodyItemScale{ 0.7f };  // items (not weapons) are shown this much smaller in 3rd person
-		float bodyItemRight{ 7.2f };  // item offset from its place over the palm, as the camera sees it
-		float bodyItemForward{ -0.3f };
-		float bodyItemUp{ 9.1f };
-		float bodyHoldRight{ 17.5f };  // where the hand holds the item, seen from the eyes
-		float bodyHoldForward{ 22.2f };
-		float bodyHoldUp{ -35.0f };
+		float bodyItemScale{ 0.77f };  // items (not weapons) are shown this much smaller in 3rd person
+		float bodyItemRight{ 2.7f };   // item offset from its place over the palm, as the camera sees it
+		float bodyItemForward{ -1.2f };
+		float bodyItemUp{ 10.4f };
+		float bodyHoldRight{ 23.0f };  // where the hand holds the item, seen from the eyes
+		float bodyHoldForward{ 18.0f };
+		float bodyHoldUp{ -29.1f };
 		// [QuickLoot] QuickLoot IE's "Take" from a container or body: the character searches it (the game's searching
 		// animation, 3rd person only), then the item is in the hand; put back = it stays in the container
 		bool  quickLoot{ false };
@@ -137,6 +144,8 @@ namespace Settings
 	inline constexpr Range kCameraSide{ -90.0f, 90.0f };
 	inline constexpr Range kCameraBack{ 0.0f, 150.0f };
 	inline constexpr Range kCameraUp{ -40.0f, 60.0f };
+	inline constexpr Range kHintPosition{ 0.0f, 100.0f };
+	inline constexpr Range kHintSize{ 10.0f, 40.0f };
 
 	const Values& Get();
 	Values&       Edit();  // the menu changes values in place, then calls Save()

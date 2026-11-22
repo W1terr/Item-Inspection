@@ -86,6 +86,10 @@ namespace Settings
 			a_func("General", "bFirstPersonOnly", a_values.firstPersonOnly);
 			a_func("General", "bBuyStoreItems", a_values.buyStoreItems);
 			a_func("General", "bShowHint", a_values.showHint);
+			a_func("General", "fHintX", a_values.hintX, kHintPosition);
+			a_func("General", "fHintY", a_values.hintY, kHintPosition);
+			a_func("General", "fHintSize", a_values.hintSize, kHintSize);
+			a_func("General", "bUniqueOnly", a_values.uniqueOnly);
 			a_func("General", "bWorldWaits", a_values.worldWaits);
 			a_func("General", "bFadeTransition", a_values.fadeTransition);
 			a_func("General", "fFadeTime", a_values.fadeTime, kFadeTime);
@@ -99,6 +103,8 @@ namespace Settings
 			a_func("Controls", "iLookGamepadKey", a_values.lookGamepadKey);
 			a_func("Controls", "iSwitchViewKey", a_values.switchViewKey);
 			a_func("Controls", "iSwitchViewGamepadKey", a_values.switchViewGamepadKey);
+			a_func("Controls", "iEquipKey", a_values.equipKey);
+			a_func("Controls", "iEquipGamepadKey", a_values.equipGamepadKey);
 			a_func("Controls", "bHoldKeyToInspect", a_values.holdKeyToInspect);
 			a_func("Controls", "iInspectKey", a_values.inspectKey);
 			a_func("Controls", "iInspectGamepadKey", a_values.inspectGamepadKey);
@@ -124,6 +130,7 @@ namespace Settings
 			a_func("Weapons", "fWeaponLeanLeft", a_values.weaponLeanLeft, kHandAngle);
 			a_func("Weapons", "fWeaponLeanForward", a_values.weaponLeanForward, kHandAngle);
 			a_func("Weapons", "fWeaponRoll", a_values.weaponRoll, kHandAngle);
+			a_func("Weapons", "bEquipWeapons", a_values.equipWeapons);
 			a_func("Weapons", "fGripSlide", a_values.gripSlide, kGripSlide);
 			a_func("Weapons", "fGripTurn", a_values.gripTurn, kHandAngle);
 			a_func("Weapons", "fGripTilt", a_values.gripTilt, kGripAngle);

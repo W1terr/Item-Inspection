@@ -29,4 +29,8 @@ namespace Inspect
 
 	// QuickLoot shows a container: another one than the one searched last means the next take searches anew
 	void ContainerShown(RE::ObjectRefHandle a_container);
+
+	// the key hint as it shows while holding an item (with the current keys and language), for the settings page's
+	// preview; nothing while an item is held (its own hint is on screen)
+	std::optional<std::string> PreviewHintText();
 }

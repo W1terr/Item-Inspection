@@ -10,10 +10,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "src"
 LANG = ROOT / "res" / "lang"
-LANGUAGES = ["french", "german", "italian", "spanish", "polish", "russian", "japanese", "chinese"]
+LANGUAGES = ["french", "german", "italian", "spanish", "polish", "russian", "japanese", "chinese", "chinese_simplified"]
 STRING = r'"(?:[^"\\]|\\.)*"'
 HELPERS = r"\b(?:T|Lang::T|Label|Header|Checkbox|Slider|KeyRow|Help)\((.*?)\);"
-NOT_TEXT = {"%.1f", "%.0f", "%.2f", "%.2f s", "%s", "store", "putback", "look", "switchview", "inspect", "{}##{}", "{}_kb", "{}_pad", "[{}] {}", "[{}] {}    [{}] {}"}
+NOT_TEXT = {"%.1f", "%.0f", "%.2f", "%.2f s", "%s", "store", "putback", "look", "switchview", "inspect", "equip", "%.0f %%", "{}##{}", "{}_kb", "{}_pad", "[{}] {}", "[{}] {}    [{}] {}"}
 MENU_ENTRIES = {"Item Inspection", "Settings", "Languages"}  # passed to the text helper as variables
 ESCAPES = {"n": "\n", "t": "\t", '"': '"', "\\": "\\", "'": "'"}
 

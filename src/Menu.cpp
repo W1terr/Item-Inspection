@@ -3,6 +3,8 @@
 #include <atomic>
 #include <chrono>
 
+#include "HUD.h"
+#include "Inspect.h"
 #include "Keys.h"
 #include "Lang.h"
 #include "QuickLoot.h"
@@ -119,6 +121,42 @@ namespace Menu
 			Help(a_gamepad ? "Click, then press a gamepad button. Esc cancels." : "Click, then press a key or mouse button. Esc cancels.");
 		}
 
+		// The hint on screen while the position / size sliders move: it stays (also with the menu closed, in case the
+		// HUD is hidden behind the menu) until the button is pressed again or an item is picked up
+		struct ShownHint
+		{
+			std::string text;
+			float       x{ -1.0f };
+			float       y{ -1.0f };
+			float       size{ -1.0f };
+		};
+		ShownHint shownHint;
+
+		void HintPreview(const Settings::Values& a_values)
+		{
+			bool previewing = HUD::Previewing();
+			if (ImGui::Button(Label(previewing ? "Hide the hint" : "Show the hint on screen").c_str())) {
+				if (previewing) {
+					HUD::HideHint();
+				} else {
+					shownHint = {};  // shown below
+				}
+				previewing = !previewing;
+			}
+			Help("Shows the hint now, so you can see where the sliders put it. It stays until you press the button again.");
+			if (!previewing) {
+				return;
+			}
+			const auto text = Inspect::PreviewHintText();
+			if (!text) {
+				return;  // an item is held: its own hint is there
+			}
+			if (*text != shownHint.text || a_values.hintX != shownHint.x || a_values.hintY != shownHint.y || a_values.hintSize != shownHint.size) {
+				shownHint = { *text, a_values.hintX, a_values.hintY, a_values.hintSize };
+				HUD::PreviewHint(*text, a_values.hintX, a_values.hintY, a_values.hintSize);
+			}
+		}
+
 		void KeyRow(const char* a_english, const char* a_id, int& a_keyboard, int& a_gamepad)
 		{
 			ImGui::Text("%s", T(a_english));
@@ -153,6 +191,9 @@ namespace Menu
 			}
 			Checkbox("Only in 1st person", v.firstPersonOnly,
 				"Items go to your hand only when you are in 1st person.\nIn 3rd person you take them like in the normal game.");
+			Checkbox("Only unique items", v.uniqueOnly,
+				"Only quest items, enchanted items, Daedric artifacts and Daedric weapons go to your hand.\n"
+				"Other items are picked up as usual. Scrolling up in the inventory still works for everything.");
 			Checkbox("Scroll up on an item in the inventory to take it in your hand", v.inventoryInspect,
 				"Instead of the zoomed preview, the inventory closes and you hold the item.\nPutting it away opens the inventory again.");
 			Checkbox("Look at items you steal too", v.inspectStolen,
@@ -178,6 +219,16 @@ namespace Menu
 			}
 			Checkbox("Item sound", v.itemSound, "The item's own pickup sound when it reaches your hand.");
 			Checkbox("Show the key hint", v.showHint, "The keys to put the item away or back, on screen while you hold it.");
+			if (v.showHint) {
+				ImGui::Indent();
+				Slider("Hint left / right", v.hintX, Settings::kHintPosition, "%.0f %%", "Where the hint is: 0 = at the left edge, 100 = at the right edge.");
+				Slider("Hint up / down", v.hintY, Settings::kHintPosition, "%.0f %%", "Where the hint is: 0 = at the top, 100 = at the bottom.");
+				Slider("Hint size", v.hintSize, Settings::kHintSize, "%.0f", "Font size of the hint.");
+				HintPreview(v);
+				ImGui::Unindent();
+			} else if (HUD::Previewing()) {
+				HUD::HideHint();
+			}
 			Checkbox("Everyone waits for you", v.worldWaits,
 				"While you hold an item nobody talks to you, attacks you or can hurt you:\npeople pause what they are doing until you put the item away.");
 			Checkbox("Fade to black when the camera switches", v.fadeTransition,
@@ -233,6 +284,9 @@ namespace Menu
 			KeyRow("Put back", "putback", v.putBackKey, v.putBackGamepadKey);
 			KeyRow("Look around (hold)", "look", v.lookKey, v.lookGamepadKey);
 			KeyRow("Switch view", "switchview", v.switchViewKey, v.switchViewGamepadKey);
+			if (v.equipWeapons) {
+				KeyRow("Equip weapon", "equip", v.equipKey, v.equipGamepadKey);
+			}
 			if (v.holdKeyToInspect) {
 				KeyRow("Inspect key (hold)", "inspect", v.inspectKey, v.inspectGamepadKey);
 			}
@@ -266,6 +320,9 @@ namespace Menu
 			Slider("Roll", v.handRoll, Settings::kHandAngle, "%.0f", "Rolls the palm around the fingers.");
 
 			Header("Weapons (held by the grip)");
+			Checkbox("Use weapons right away", v.equipWeapons,
+				"Press the equip key while you hold a weapon: it goes into your inventory, is equipped and drawn,\n"
+				"and your hand goes over to the normal weapon hold.");
 			Slider("Weapon hand right", v.weaponRight, Settings::kHoldRight, "%.1f", "Game units to the right of your eyes.");
 			Slider("Weapon hand forward", v.weaponForward, Settings::kHoldForward, "%.1f", "Game units in front of your eyes.");
 			Slider("Weapon hand up", v.weaponUp, Settings::kHoldUp, "%.1f", "Game units above (negative: below) your eyes.");

@@ -5,7 +5,7 @@
 namespace Lang
 {
 	inline constexpr int kAuto = 0;   // the game's own language (sLanguage:General)
-	inline constexpr int kCount = 9;  // English, French, German, Italian, Spanish, Polish, Russian, Japanese, Chinese
+	inline constexpr int kCount = 10;  // English, French, German, Italian, Spanish, Polish, Russian, Japanese, Chinese (traditional, simplified)
 
 	void        Set(int a_setting);  // kAuto or 1..kCount (the INI's iLanguage)
 	int         Current();           // the language in use, 1..kCount

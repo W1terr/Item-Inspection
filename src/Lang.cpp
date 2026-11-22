@@ -12,15 +12,16 @@ namespace Lang
 {
 	namespace
 	{
-		// English, French, German, Italian, Spanish, Polish, Russian, Japanese, Chinese (traditional). English is the code's
-		// own text; the others are read from Data\SKSE\Plugins\ItemInspection\lang\<file>.json (English text -> translation),
-		// so a translation can be fixed or added without a new DLL.
+		// English, French, German, Italian, Spanish, Polish, Russian, Japanese, Chinese (traditional, simplified). English is
+		// the code's own text; the others are read from Data\SKSE\Plugins\ItemInspection\lang\<file>.json (English text ->
+		// translation), so a translation can be fixed or added without a new DLL.
 		constexpr std::array<const char*, kCount> kNativeNames{ "English", "Français", "Deutsch", "Italiano", "Español", "Polski",
-			"Русский", "日本語", "繁體中文" };
+			"Русский", "日本語", "繁體中文", "简体中文" };
+		// the game's sLanguage for each: its CHINESE is the traditional one, simplified is only picked in the menu
 		constexpr std::array<std::string_view, kCount> kGameNames{ "ENGLISH", "FRENCH", "GERMAN", "ITALIAN", "SPANISH", "POLISH",
-			"RUSSIAN", "JAPANESE", "CHINESE" };
+			"RUSSIAN", "JAPANESE", "CHINESE", "CHINESE_SIMPLIFIED" };
 		constexpr std::array<std::string_view, kCount> kFiles{ "", "french", "german", "italian", "spanish", "polish", "russian",
-			"japanese", "chinese" };
+			"japanese", "chinese", "chinese_simplified" };
 
 		struct StringHash
 		{
