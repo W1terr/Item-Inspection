@@ -28,6 +28,10 @@ namespace Settings
 		float hintX{ 100.0f };          // where the hint is: percent of the screen from the left (0 = left edge, 100 = right edge)
 		float hintY{ 5.0f };            // ... and from the top
 		float hintSize{ 18.0f };        // its font size
+		bool  showItemInfo{ true };     // the item's name and stats (like the inventory's item card) at the side of the screen
+		int   itemInfoSide{ 1 };        // ... 0 = left, 1 = right
+		float itemInfoY{ 40.0f };       // ... percent of the screen from the top
+		float itemInfoSize{ 1.0f };     // ... scale
 		bool uniqueOnly{ false };       // only quest items, enchanted items, Daedric artifacts and Daedric weapons go to the hand
 		bool worldWaits{ true };        // nobody talks to you, attacks or hurts you while you hold an item (AI paused)
 		bool fadeTransition{ true };    // short fade to black when the camera switches between 3rd and 1st person
@@ -74,11 +78,14 @@ namespace Settings
 		float weaponRoll{ 12.0f };         // turned around the blade
 		bool  equipWeapons{ true };        // the equip key takes a held weapon straight into your hand, drawn
 		// the weapon in the fist (models whose grip sits elsewhere, e.g. held at the crossguard): + slides the hand towards the
-		// pommel (units), turns the weapon around the blade / tilts it in the fist (degrees). 1st person, then 3rd person
-		float gripSlide{ 7.0f };
+		// pommel (units), turns the weapon around the blade / tilts it in the fist (degrees). 1st person, then 3rd person;
+		// the slide on its own for two-handed weapons (their long handles sit differently in the fist)
+		float gripSlide{ 6.0f };
+		float twoHandedGripSlide{ 0.0f };
 		float gripTurn{ 0.0f };
 		float gripTilt{ 0.0f };
-		float bodyGripSlide{ 5.3f };
+		float bodyGripSlide{ 6.0f };
+		float bodyTwoHandedGripSlide{ 0.0f };
 		float bodyGripTurn{ 0.0f };
 		float bodyGripTilt{ 0.0f };
 		// [Bows] bows and crossbows: held further out (about arm's length) and more upright, so more of them is in view
@@ -114,9 +121,6 @@ namespace Settings
 		float searchAgainTime{ 0.5f };  // ... taking more from the container just searched: a quick reach in
 		bool  lootBodies{ true };       // also items taken from dead bodies (and corpse-like containers)
 		bool  bigChestsOnly{ false };   // only items from real chests (not barrels, sacks, urns, drawers, bodies...)
-		float raiseTime{ 0.45f };
-		float stowTime{ 0.6f };
-		float returnTime{ 0.5f };
 	};
 
 	// slider ranges, shared by the INI reader and the menu
@@ -146,6 +150,7 @@ namespace Settings
 	inline constexpr Range kCameraUp{ -40.0f, 60.0f };
 	inline constexpr Range kHintPosition{ 0.0f, 100.0f };
 	inline constexpr Range kHintSize{ 10.0f, 40.0f };
+	inline constexpr Range kItemInfoSize{ 0.5f, 2.0f };
 
 	const Values& Get();
 	Values&       Edit();  // the menu changes values in place, then calls Save()

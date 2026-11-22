@@ -93,6 +93,12 @@ namespace Menu
 			ImGui::SeparatorText(T(a_english));
 		}
 
+		// a settings group that opens on a click (closed at first); true = open, its settings follow
+		bool Section(const char* a_english)
+		{
+			return ImGui::CollapsingHeader(Label(a_english).c_str());
+		}
+
 		void Checkbox(const char* a_english, bool& a_value, const char* a_help = nullptr)
 		{
 			Changed(ImGui::Checkbox(Label(a_english).c_str(), &a_value));
@@ -121,40 +127,72 @@ namespace Menu
 			Help(a_gamepad ? "Click, then press a gamepad button. Esc cancels." : "Click, then press a key or mouse button. Esc cancels.");
 		}
 
-		// The hint on screen while the position / size sliders move: it stays (also with the menu closed, in case the
+		// The hint and the item info on screen while their sliders move: they stay (also with the menu closed, in case the
 		// HUD is hidden behind the menu) until the button is pressed again or an item is picked up
-		struct ShownHint
+		struct Shown
 		{
 			std::string text;
-			float       x{ -1.0f };
-			float       y{ -1.0f };
-			float       size{ -1.0f };
+			bool        hint{ false };
+			float       hintX{ -1.0f };
+			float       hintY{ -1.0f };
+			float       hintSize{ -1.0f };
+			bool        info{ false };
+			int         infoSide{ -1 };
+			float       infoY{ -1.0f };
+			float       infoSize{ -1.0f };
+			int         language{ -1 };
+			bool operator==(const Shown&) const = default;
 		};
-		ShownHint shownHint;
+		Shown shown;
+		bool  previewOn{ false };
 
-		void HintPreview(const Settings::Values& a_values)
+		void StopPreview()
 		{
-			bool previewing = HUD::Previewing();
-			if (ImGui::Button(Label(previewing ? "Hide the hint" : "Show the hint on screen").c_str())) {
-				if (previewing) {
-					HUD::HideHint();
-				} else {
-					shownHint = {};  // shown below
+			previewOn = false;
+			HUD::HideHint();
+			Inspect::PreviewItemInfo(false);
+		}
+
+		void Preview(const Settings::Values& a_values)
+		{
+			if (!a_values.showHint && !a_values.showItemInfo) {
+				if (previewOn) {
+					StopPreview();
 				}
-				previewing = !previewing;
+				return;
 			}
-			Help("Shows the hint now, so you can see where the sliders put it. It stays until you press the button again.");
-			if (!previewing) {
+			if (ImGui::Button(Label(previewOn ? "Hide them" : "Show the hint and item info on screen").c_str())) {
+				if (previewOn) {
+					StopPreview();
+				} else {
+					previewOn = true;
+					shown = {};  // shown below
+				}
+			}
+			Help("Shows them now with an example item, so you can see where the sliders put them. They stay until you press the button again.");
+			if (!previewOn) {
 				return;
 			}
 			const auto text = Inspect::PreviewHintText();
 			if (!text) {
-				return;  // an item is held: its own hint is there
+				previewOn = false;  // an item is held: its own are on screen
+				return;
 			}
-			if (*text != shownHint.text || a_values.hintX != shownHint.x || a_values.hintY != shownHint.y || a_values.hintSize != shownHint.size) {
-				shownHint = { *text, a_values.hintX, a_values.hintY, a_values.hintSize };
-				HUD::PreviewHint(*text, a_values.hintX, a_values.hintY, a_values.hintSize);
+			const Shown now{ *text, a_values.showHint, a_values.hintX, a_values.hintY, a_values.hintSize, a_values.showItemInfo, a_values.itemInfoSide,
+				a_values.itemInfoY, a_values.itemInfoSize, Lang::Current() };
+			if (now == shown) {
+				return;
 			}
+			if (now.hint) {
+				HUD::ShowHint(*text, a_values.hintX, a_values.hintY, a_values.hintSize);
+			} else {
+				HUD::HideHint();
+			}
+			if (now.info != shown.info || now.infoSide != shown.infoSide || now.infoY != shown.infoY || now.infoSize != shown.infoSize ||
+				now.language != shown.language) {
+				Inspect::PreviewItemInfo(now.info);
+			}
+			shown = now;
 		}
 
 		void KeyRow(const char* a_english, const char* a_id, int& a_keyboard, int& a_gamepad)
@@ -171,214 +209,233 @@ namespace Menu
 			SaveIfDue(false);
 			auto& v = Settings::Edit();
 
-			Header("General");
-			Checkbox("Enabled", v.enabled, "Items you take from the world go to your hand first.");
-			Checkbox("Show it every time", v.alwaysInspect,
-				"Off: you look at each kind of item only the first time you take it in this playthrough.\n"
-				"After that it goes straight into the inventory like in the normal game.\n"
-				"On: every item you take goes to your hand first.");
-			if (!v.alwaysInspect) {
-				ImGui::Indent();
-				const auto count = Seen::Count();
-				const auto seen = std::vformat(T("Already looked at in this playthrough: {} kinds of items"), std::make_format_args(count));
-				ImGui::Text("%s", seen.c_str());
-				ImGui::SameLine();
-				if (ImGui::Button(Label("Forget them").c_str())) {
-					Seen::Clear();
+			if (Section("General")) {
+				Checkbox("Enabled", v.enabled, "Items you take from the world go to your hand first.");
+				Checkbox("Show it every time", v.alwaysInspect,
+					"Off: you look at each kind of item only the first time you take it in this playthrough.\n"
+					"After that it goes straight into the inventory like in the normal game.\n"
+					"On: every item you take goes to your hand first.");
+				if (!v.alwaysInspect) {
+					ImGui::Indent();
+					const auto count = Seen::Count();
+					const auto seen = std::vformat(T("Already looked at in this playthrough: {} kinds of items"), std::make_format_args(count));
+					ImGui::Text("%s", seen.c_str());
+					ImGui::SameLine();
+					if (ImGui::Button(Label("Forget them").c_str())) {
+						Seen::Clear();
+					}
+					Help("Every kind of item shows up in your hand again the next time you take it.");
+					ImGui::Unindent();
 				}
-				Help("Every kind of item shows up in your hand again the next time you take it.");
-				ImGui::Unindent();
-			}
-			Checkbox("Only in 1st person", v.firstPersonOnly,
-				"Items go to your hand only when you are in 1st person.\nIn 3rd person you take them like in the normal game.");
-			Checkbox("Only unique items", v.uniqueOnly,
-				"Only quest items, enchanted items, Daedric artifacts and Daedric weapons go to your hand.\n"
-				"Other items are picked up as usual. Scrolling up in the inventory still works for everything.");
-			Checkbox("Scroll up on an item in the inventory to take it in your hand", v.inventoryInspect,
-				"Instead of the zoomed preview, the inventory closes and you hold the item.\nPutting it away opens the inventory again.");
-			Checkbox("Look at items you steal too", v.inspectStolen,
-				"On: stolen items go to your hand first as well. It only counts as stealing when you put the item\n"
-				"in your backpack; putting it back is no crime.\nOff: stealing works like in the normal game.");
-			Checkbox("Buy store items when you put them in the backpack", v.buyStoreItems,
-				"With Purchaseable Store-Display-Items: an item for sale goes to your hand like any other.\n"
-				"Putting it in the backpack asks you to buy it, with that mod's own message box and price;\n"
-				"if you don't buy it, it is put back.\nOff: that mod asks right away, as usual.");
-			if (v.buyStoreItems && !StoreDisplay::Installed()) {
-				ImGui::Indent();
-				ImGui::TextDisabled("%s", T("Purchaseable Store-Display-Items isn't installed: this has no effect."));
-				ImGui::Unindent();
-			}
-			Checkbox("Telekinesis", v.telekinesis,
-				"The item floats over your hand with the Telekinesis spell's hand effect,\nand your fingers move while you turn it.");
-			if (v.telekinesis) {
-				ImGui::Indent();
-				Slider("Effect size", v.telekinesisSize, Settings::kEffectSize, "%.1f", "Size of the telekinesis effect on the hand. 1 = like the spell.");
-				Checkbox("Hand light", v.telekinesisLight, "The spell's orange light around the hand.");
-				Checkbox("Sound", v.telekinesisSound, "The telekinesis grab sound when you pick the item up, put it in the backpack or put it back.");
-				ImGui::Unindent();
-			}
-			Checkbox("Item sound", v.itemSound, "The item's own pickup sound when it reaches your hand.");
-			Checkbox("Show the key hint", v.showHint, "The keys to put the item away or back, on screen while you hold it.");
-			if (v.showHint) {
-				ImGui::Indent();
-				Slider("Hint left / right", v.hintX, Settings::kHintPosition, "%.0f %%", "Where the hint is: 0 = at the left edge, 100 = at the right edge.");
-				Slider("Hint up / down", v.hintY, Settings::kHintPosition, "%.0f %%", "Where the hint is: 0 = at the top, 100 = at the bottom.");
-				Slider("Hint size", v.hintSize, Settings::kHintSize, "%.0f", "Font size of the hint.");
-				HintPreview(v);
-				ImGui::Unindent();
-			} else if (HUD::Previewing()) {
-				HUD::HideHint();
-			}
-			Checkbox("Everyone waits for you", v.worldWaits,
-				"While you hold an item nobody talks to you, attacks you or can hurt you:\npeople pause what they are doing until you put the item away.");
-			Checkbox("Fade to black when the camera switches", v.fadeTransition,
-				"From 3rd person: a short fade to black hides the switch to 1st person and back.");
-			if (v.fadeTransition) {
-				ImGui::Indent();
-				Slider("Fade length", v.fadeTime, Settings::kFadeTime, "%.2f s", "Seconds to black; coming back from black takes a bit longer.");
-				ImGui::Unindent();
-			}
-			ImGui::TextDisabled("%s", T("Weapons and bows are held by the grip; the mouse turns the hand. Other items float over the hand."));
-
-			Header("Normal pickup for");
-			Checkbox("Gold", v.skipGold);
-			Checkbox("Arrows and bolts", v.skipAmmo);
-			Checkbox("Weapons", v.skipWeapons, "Swords, axes, bows... go straight into the inventory, like in the normal game.");
-			Checkbox("Armor and clothes", v.skipArmor, "Armor, clothes and jewelry go straight into the inventory, like in the normal game.");
-			Checkbox("Harvested plants", v.skipHarvest, "Ingredients from plants, mushrooms, nests... go straight into the inventory, like in the normal game.");
-
-			Header("QuickLoot");
-			Checkbox("Items taken with QuickLoot go to your hand", v.quickLoot,
-				"When you take an item from a container or a body with QuickLoot's \"Take\", your character searches it first\n"
-				"and then holds the item like any other. Put it in the backpack to take it, or put it back into the container.\n"
-				"\"Take All\" and \"Equip\" / \"Use\" work as usual.");
-			if (v.quickLoot) {
-				ImGui::Indent();
-				Slider("Search animation", v.searchTime, Settings::kSearchTime, "%.2f s",
-					"Seconds your character searches the container first (the game's own searching animation).\n"
-					"Only in 3rd person, 0 = no animation.");
-				Slider("Search again (same container)", v.searchAgainTime, Settings::kSearchTime, "%.2f s",
-					"Seconds of searching when you take another item from the container you just searched:\n"
-					"a quick reach in. Until you look at another container. 0 = no animation.");
-				Checkbox("Only big chests", v.bigChestsOnly,
-					"Only items from real chests (wooden, noble, Dwemer, Falmer, ruins chests) go to your hand.\n"
-					"Barrels, sacks, urns, drawers, wardrobes and bodies work as usual.");
-				if (!v.bigChestsOnly) {
-					Checkbox("Also from bodies", v.lootBodies,
-						"Items you take from dead bodies (and corpses lying around) go to your hand too.\n"
-						"Off: those are taken as usual.");
+				Checkbox("Only in 1st person", v.firstPersonOnly,
+					"Items go to your hand only when you are in 1st person.\nIn 3rd person you take them like in the normal game.");
+				Checkbox("Only unique items", v.uniqueOnly,
+					"Only quest items, enchanted items, Daedric artifacts and Daedric weapons go to your hand.\n"
+					"Other items are picked up as usual. Scrolling up in the inventory still works for everything.");
+				Checkbox("Scroll up on an item in the inventory to take it in your hand", v.inventoryInspect,
+					"Instead of the zoomed preview, the inventory closes and you hold the item.\nPutting it away opens the inventory again.");
+				Checkbox("Look at items you steal too", v.inspectStolen,
+					"On: stolen items go to your hand first as well. It only counts as stealing when you put the item\n"
+					"in your backpack; putting it back is no crime.\nOff: stealing works like in the normal game.");
+				if (StoreDisplay::Installed()) {
+					Checkbox("Buy store items when you put them in the backpack", v.buyStoreItems,
+						"With Purchaseable Store-Display-Items: an item for sale goes to your hand like any other.\n"
+						"Putting it in the backpack asks you to buy it, with that mod's own message box and price;\n"
+						"if you don't buy it, it is put back.\nOff: that mod asks right away, as usual.");
 				}
-				ImGui::Unindent();
+				Checkbox("Telekinesis", v.telekinesis,
+					"The item floats over your hand with the Telekinesis spell's hand effect,\nand your fingers move while you turn it.");
+				if (v.telekinesis) {
+					ImGui::Indent();
+					Slider("Effect size", v.telekinesisSize, Settings::kEffectSize, "%.1f", "Size of the telekinesis effect on the hand. 1 = like the spell.");
+					Checkbox("Hand light", v.telekinesisLight, "The spell's orange light around the hand.");
+					Checkbox("Sound", v.telekinesisSound, "The telekinesis grab sound when you pick the item up, put it in the backpack or put it back.");
+					ImGui::Unindent();
+				}
+				Checkbox("Item sound", v.itemSound, "The item's own pickup sound when it reaches your hand.");
+				Checkbox("Everyone waits for you", v.worldWaits,
+					"While you hold an item nobody talks to you, attacks you or can hurt you:\npeople pause what they are doing until you put the item away.");
+				Checkbox("Fade to black when the camera switches", v.fadeTransition,
+					"From 3rd person: a short fade to black hides the switch to 1st person and back.");
+				if (v.fadeTransition) {
+					ImGui::Indent();
+					Slider("Fade length", v.fadeTime, Settings::kFadeTime, "%.2f s", "Seconds to black; coming back from black takes a bit longer.");
+					ImGui::Unindent();
+				}
+				ImGui::TextDisabled("%s", T("Weapons and bows are held by the grip; the mouse turns the hand. Other items float over the hand."));
 			}
-			if (!QuickLoot::Installed()) {
-				ImGui::TextDisabled("%s", T("QuickLoot IE isn't installed: this has no effect."));
+
+			if (Section("On screen")) {
+				Checkbox("Show the key hint", v.showHint, "The keys to put the item away or back, on screen while you hold it.");
+				if (v.showHint) {
+					ImGui::Indent();
+					Slider("Hint left / right", v.hintX, Settings::kHintPosition, "%.0f %%", "Where the hint is: 0 = at the left edge, 100 = at the right edge.");
+					Slider("Hint up / down", v.hintY, Settings::kHintPosition, "%.0f %%", "Where the hint is: 0 = at the top, 100 = at the bottom.");
+					Slider("Hint size", v.hintSize, Settings::kHintSize, "%.0f", "Font size of the hint.");
+					ImGui::Unindent();
+				}
+				Checkbox("Show the item info", v.showItemInfo,
+					"The item's name and stats (damage or armor, weight, value, enchantment) at the side of the screen\n"
+					"while you hold it, like the inventory shows them.");
+				if (v.showItemInfo) {
+					ImGui::Indent();
+					Changed(ImGui::RadioButton(Label("Left side").c_str(), &v.itemInfoSide, 0));
+					ImGui::SameLine();
+					Changed(ImGui::RadioButton(Label("Right side").c_str(), &v.itemInfoSide, 1));
+					Slider("Item info up / down", v.itemInfoY, Settings::kHintPosition, "%.0f %%", "Where the item info is: 0 = at the top, 100 = at the bottom.");
+					Slider("Item info size", v.itemInfoSize, Settings::kItemInfoSize, "%.2f", "Size of the item info. 1 = normal.");
+					ImGui::Unindent();
+				}
+				Preview(v);
 			}
 
-			Header("Controls");
-			ImGui::Text(" ");
-			ImGui::SameLine(190.0f);
-			ImGui::Text("%s", T("Keyboard / mouse"));
-			ImGui::SameLine(190.0f + 158.0f);
-			ImGui::Text("%s", T("Gamepad"));
-			KeyRow("Put in backpack", "store", v.storeKey, v.storeGamepadKey);
-			KeyRow("Put back", "putback", v.putBackKey, v.putBackGamepadKey);
-			KeyRow("Look around (hold)", "look", v.lookKey, v.lookGamepadKey);
-			KeyRow("Switch view", "switchview", v.switchViewKey, v.switchViewGamepadKey);
-			if (v.equipWeapons) {
-				KeyRow("Equip weapon", "equip", v.equipKey, v.equipGamepadKey);
+			if (Section("Normal pickup for")) {
+				Checkbox("Gold", v.skipGold);
+				Checkbox("Arrows and bolts", v.skipAmmo);
+				Checkbox("Weapons", v.skipWeapons, "Swords, axes, bows... go straight into the inventory, like in the normal game.");
+				Checkbox("Armor and clothes", v.skipArmor, "Armor, clothes and jewelry go straight into the inventory, like in the normal game.");
+				Checkbox("Harvested plants", v.skipHarvest, "Ingredients from plants, mushrooms, nests... go straight into the inventory, like in the normal game.");
 			}
-			if (v.holdKeyToInspect) {
-				KeyRow("Inspect key (hold)", "inspect", v.inspectKey, v.inspectGamepadKey);
+
+			if (Section("QuickLoot")) {
+				Checkbox("Items taken with QuickLoot go to your hand", v.quickLoot,
+					"When you take an item from a container or a body with QuickLoot's \"Take\", your character searches it first\n"
+					"and then holds the item like any other. Put it in the backpack to take it, or put it back into the container.\n"
+					"\"Take All\" and \"Equip\" / \"Use\" work as usual.");
+				if (v.quickLoot) {
+					ImGui::Indent();
+					Slider("Search animation", v.searchTime, Settings::kSearchTime, "%.2f s",
+						"Seconds your character searches the container first (the game's own searching animation).\n"
+						"Only in 3rd person, 0 = no animation.");
+					Slider("Search again (same container)", v.searchAgainTime, Settings::kSearchTime, "%.2f s",
+						"Seconds of searching when you take another item from the container you just searched:\n"
+						"a quick reach in. Until you look at another container. 0 = no animation.");
+					Checkbox("Only big chests", v.bigChestsOnly,
+						"Only items from real chests (wooden, noble, Dwemer, Falmer, ruins chests) go to your hand.\n"
+						"Barrels, sacks, urns, drawers, wardrobes and bodies work as usual.");
+					if (!v.bigChestsOnly) {
+						Checkbox("Also from bodies", v.lootBodies,
+							"Items you take from dead bodies (and corpses lying around) go to your hand too.\n"
+							"Off: those are taken as usual.");
+					}
+					ImGui::Unindent();
+				}
+				if (!QuickLoot::Installed()) {
+					ImGui::TextDisabled("%s", T("QuickLoot IE isn't installed: this has no effect."));
+				}
 			}
-			Checkbox("Hold a key to inspect", v.holdKeyToInspect,
-				"On: an item goes to your hand only if you hold the inspect key while you press Activate\n"
-				"(picking up, harvesting, QuickLoot's Take). A normal press picks it up as usual.");
-			Slider("Mouse speed", v.mouseSensitivity, Settings::kSensitivity, "%.2f", "How fast moving the mouse turns the item.");
-			Slider("Gamepad speed", v.gamepadSensitivity, Settings::kSensitivity, "%.2f", "How fast the right stick turns the item.");
-			Checkbox("Invert up / down", v.invertY);
-			Checkbox("Invert looking up / down", v.invertLookY);
-			ImGui::TextDisabled("%s", T("The mouse wheel brings the item closer or moves it farther away.\n"
-										"Hold the look key to turn your head; the hand and the item stay where they are.\n"
-										"Let go and your head turns back to the item."));
 
-			Header("Hand position (game units from your eyes)");
-			Slider("Right", v.holdRight, Settings::kHoldRight, "%.1f", "Game units to the right of your eyes.");
-			Slider("Forward", v.holdForward, Settings::kHoldForward, "%.1f", "Game units in front of your eyes.");
-			Slider("Up", v.holdUp, Settings::kHoldUp, "%.1f", "Game units above (negative: below) your eyes.");
-			Slider("Height above the hand", v.holdHeight, Settings::kHoldHeight, "%.1f", "How far the item floats above your palm.");
+			if (Section("Controls")) {
+				ImGui::Text(" ");
+				ImGui::SameLine(190.0f);
+				ImGui::Text("%s", T("Keyboard / mouse"));
+				ImGui::SameLine(190.0f + 158.0f);
+				ImGui::Text("%s", T("Gamepad"));
+				KeyRow("Put in backpack", "store", v.storeKey, v.storeGamepadKey);
+				KeyRow("Put back", "putback", v.putBackKey, v.putBackGamepadKey);
+				KeyRow("Look around (hold)", "look", v.lookKey, v.lookGamepadKey);
+				KeyRow("Switch view", "switchview", v.switchViewKey, v.switchViewGamepadKey);
+				if (v.equipWeapons) {
+					KeyRow("Equip weapon", "equip", v.equipKey, v.equipGamepadKey);
+				}
+				if (v.holdKeyToInspect) {
+					KeyRow("Inspect key (hold)", "inspect", v.inspectKey, v.inspectGamepadKey);
+				}
+				Checkbox("Hold a key to inspect", v.holdKeyToInspect,
+					"On: an item goes to your hand only if you hold the inspect key while you press Activate\n"
+					"(picking up, harvesting, QuickLoot's Take). A normal press picks it up as usual.");
+				Slider("Mouse speed", v.mouseSensitivity, Settings::kSensitivity, "%.2f", "How fast moving the mouse turns the item.");
+				Slider("Gamepad speed", v.gamepadSensitivity, Settings::kSensitivity, "%.2f", "How fast the right stick turns the item.");
+				Checkbox("Invert up / down", v.invertY);
+				Checkbox("Invert looking up / down", v.invertLookY);
+				ImGui::TextDisabled("%s", T("The mouse wheel brings the item closer or moves it farther away.\n"
+											"Hold the look key to turn your head; the hand and the item stay where they are.\n"
+											"Let go and your head turns back to the item."));
+			}
 
-			Header("Item position");
-			Slider("Item right", v.itemRight, Settings::kItemOffset, "%.1f", "Moves the item to the right (+) or left (-) of its place over the hand.");
-			Slider("Item forward", v.itemForward, Settings::kItemOffset, "%.1f", "Moves the item away from you (+) or closer (-).");
-			Slider("Item up", v.itemUp, Settings::kItemOffset, "%.1f", "Moves the item up (+) or down (-).");
-			Slider("Item size", v.itemScale, Settings::kItemScale, "%.2f",
-				"Items (not weapons) are shown this much bigger or smaller in your hand.");
+			if (Section("Hand position (game units from your eyes)")) {
+				Slider("Right", v.holdRight, Settings::kHoldRight, "%.1f", "Game units to the right of your eyes.");
+				Slider("Forward", v.holdForward, Settings::kHoldForward, "%.1f", "Game units in front of your eyes.");
+				Slider("Up", v.holdUp, Settings::kHoldUp, "%.1f", "Game units above (negative: below) your eyes.");
+				Slider("Height above the hand", v.holdHeight, Settings::kHoldHeight, "%.1f", "How far the item floats above your palm.");
+			}
 
-			Header("Hand rotation (degrees)");
-			Slider("Turn", v.handTurn, Settings::kHandAngle, "%.0f", "Turns the hand to the right (+) or left (-).");
-			Slider("Tilt", v.handTilt, Settings::kHandAngle, "%.0f", "Tilts the fingers up (+) or down (-).");
-			Slider("Roll", v.handRoll, Settings::kHandAngle, "%.0f", "Rolls the palm around the fingers.");
+			if (Section("Item position")) {
+				Slider("Item right", v.itemRight, Settings::kItemOffset, "%.1f", "Moves the item to the right (+) or left (-) of its place over the hand.");
+				Slider("Item forward", v.itemForward, Settings::kItemOffset, "%.1f", "Moves the item away from you (+) or closer (-).");
+				Slider("Item up", v.itemUp, Settings::kItemOffset, "%.1f", "Moves the item up (+) or down (-).");
+				Slider("Item size", v.itemScale, Settings::kItemScale, "%.2f",
+					"Items (not weapons) are shown this much bigger or smaller in your hand.");
+			}
 
-			Header("Weapons (held by the grip)");
-			Checkbox("Use weapons right away", v.equipWeapons,
-				"Press the equip key while you hold a weapon: it goes into your inventory, is equipped and drawn,\n"
-				"and your hand goes over to the normal weapon hold.");
-			Slider("Weapon hand right", v.weaponRight, Settings::kHoldRight, "%.1f", "Game units to the right of your eyes.");
-			Slider("Weapon hand forward", v.weaponForward, Settings::kHoldForward, "%.1f", "Game units in front of your eyes.");
-			Slider("Weapon hand up", v.weaponUp, Settings::kHoldUp, "%.1f", "Game units above (negative: below) your eyes.");
-			Slider("Blade lean left", v.weaponLeanLeft, Settings::kHandAngle, "%.0f", "Degrees the blade tips to the left (-: right) from straight up.");
-			Slider("Blade lean forward", v.weaponLeanForward, Settings::kHandAngle, "%.0f", "Degrees the blade tips away from you (-: towards you).");
-			Slider("Blade roll", v.weaponRoll, Settings::kHandAngle, "%.0f", "Turns the weapon around the blade.");
-			Slider("Hand along the handle", v.gripSlide, Settings::kGripSlide, "%.1f",
-				"Slides your hand along the weapon's handle: + towards the pommel, - towards the blade.\n"
-				"For weapons your hand holds at the wrong place, e.g. at the crossguard.");
-			Slider("Turn in the hand", v.gripTurn, Settings::kHandAngle, "%.0f", "Turns the weapon around its blade inside your fist, in degrees.");
-			Slider("Tilt in the hand", v.gripTilt, Settings::kGripAngle, "%.0f", "Tilts the weapon inside your fist, in degrees.");
+			if (Section("Hand rotation (degrees)")) {
+				Slider("Turn", v.handTurn, Settings::kHandAngle, "%.0f", "Turns the hand to the right (+) or left (-).");
+				Slider("Tilt", v.handTilt, Settings::kHandAngle, "%.0f", "Tilts the fingers up (+) or down (-).");
+				Slider("Roll", v.handRoll, Settings::kHandAngle, "%.0f", "Rolls the palm around the fingers.");
+			}
 
-			Header("Bows and crossbows");
-			Slider("Bow hand right", v.bowRight, Settings::kHoldRight, "%.1f", "Game units to the right of your eyes.");
-			Slider("Bow hand forward", v.bowForward, Settings::kHoldForward, "%.1f",
-				"Game units in front of your eyes. Your arm reaches about 36, further it stays stretched.");
-			Slider("Bow hand up", v.bowUp, Settings::kHoldUp, "%.1f", "Game units above (negative: below) your eyes.");
-			Slider("Bow lean left", v.bowLeanLeft, Settings::kHandAngle, "%.0f", "Degrees the bow tips to the left (-: right) from straight up.");
-			Slider("Bow lean forward", v.bowLeanForward, Settings::kHandAngle, "%.0f", "Degrees the bow tips away from you (-: towards you).");
-
-			Header("Third person");
-			Checkbox("Stay in third person", v.thirdPerson,
-				"In 3rd person the camera moves in over your shoulder instead of switching to 1st person,\n"
-				"and you see your hand put the item away.");
-			if (v.thirdPerson) {
-				ImGui::Indent();
-				Slider("Camera right", v.cameraRight, Settings::kCameraSide, "%.1f", "Game units the camera is to the right of your eyes.");
-				Slider("Camera back", v.cameraBack, Settings::kCameraBack, "%.1f", "Game units the camera is behind your eyes.");
-				Slider("Camera up", v.cameraUp, Settings::kCameraUp, "%.1f", "Game units the camera is above (negative: below) your eyes.");
-				Slider("Camera move time", v.cameraTime, Settings::kTime, "%.2f s", "Seconds the camera takes to fly in and back.");
-				Checkbox("Stand still while holding", v.standStill,
-					"Your character goes back to standing and holds still while looking at the item,\n"
-					"instead of playing idle animations.");
-				Checkbox("Look at the item", v.headLook, "Your character's head turns to look at the item in the hand.");
-				Slider("Hand right (3rd person)", v.bodyHoldRight, Settings::kHoldRight, "%.1f", "Game units to the right of your eyes.");
-				Slider("Hand forward (3rd person)", v.bodyHoldForward, Settings::kHoldForward, "%.1f", "Game units in front of your eyes.");
-				Slider("Hand up (3rd person)", v.bodyHoldUp, Settings::kBodyHoldUp, "%.1f", "Game units above (negative: below) your eyes.");
-				Slider("Item size (3rd person)", v.bodyItemScale, Settings::kItemScale, "%.2f", "Items (not weapons) are shown this much smaller in 3rd person.");
-				Slider("Item right (3rd person)", v.bodyItemRight, Settings::kItemOffset, "%.1f", "Moves the item to the right (-: left) as the camera sees it.");
-				Slider("Item forward (3rd person)", v.bodyItemForward, Settings::kItemOffset, "%.1f", "Moves the item away from the camera (-: towards it).");
-				Slider("Item up (3rd person)", v.bodyItemUp, Settings::kItemOffset, "%.1f", "Moves the item up (-: down) as the camera sees it.");
-				Slider("Weapon: hand along the handle (3rd person)", v.bodyGripSlide, Settings::kGripSlide, "%.1f",
+			if (Section("Weapons (held by the grip)")) {
+				Checkbox("Use weapons right away", v.equipWeapons,
+					"Press the equip key while you hold a weapon: it goes into your inventory, is equipped and drawn,\n"
+					"and your hand goes over to the normal weapon hold.");
+				Slider("Weapon hand right", v.weaponRight, Settings::kHoldRight, "%.1f", "Game units to the right of your eyes.");
+				Slider("Weapon hand forward", v.weaponForward, Settings::kHoldForward, "%.1f", "Game units in front of your eyes.");
+				Slider("Weapon hand up", v.weaponUp, Settings::kHoldUp, "%.1f", "Game units above (negative: below) your eyes.");
+				Slider("Blade lean left", v.weaponLeanLeft, Settings::kHandAngle, "%.0f", "Degrees the blade tips to the left (-: right) from straight up.");
+				Slider("Blade lean forward", v.weaponLeanForward, Settings::kHandAngle, "%.0f", "Degrees the blade tips away from you (-: towards you).");
+				Slider("Blade roll", v.weaponRoll, Settings::kHandAngle, "%.0f", "Turns the weapon around the blade.");
+				Slider("Hand along the handle (one-handed)", v.gripSlide, Settings::kGripSlide, "%.1f",
 					"Slides your hand along the weapon's handle: + towards the pommel, - towards the blade.\n"
 					"For weapons your hand holds at the wrong place, e.g. at the crossguard.");
-				Slider("Weapon: turn in the hand (3rd person)", v.bodyGripTurn, Settings::kHandAngle, "%.0f", "Turns the weapon around its blade inside your fist, in degrees.");
-				Slider("Weapon: tilt in the hand (3rd person)", v.bodyGripTilt, Settings::kGripAngle, "%.0f", "Tilts the weapon inside your fist, in degrees.");
-				ImGui::Unindent();
+				Slider("Hand along the handle (two-handed)", v.twoHandedGripSlide, Settings::kGripSlide, "%.1f",
+					"The same for greatswords, battleaxes and warhammers: their long handles sit differently in the fist.");
+				Slider("Turn in the hand", v.gripTurn, Settings::kHandAngle, "%.0f", "Turns the weapon around its blade inside your fist, in degrees.");
+				Slider("Tilt in the hand", v.gripTilt, Settings::kGripAngle, "%.0f", "Tilts the weapon inside your fist, in degrees.");
 			}
-			Slider("Wait for the pickup animation", v.animationWait, Settings::kWait, "%.2f s",
-				"Seconds a pickup in 3rd person waits, so the pickup animation of Immersive Interactions\n"
-				"plays first. Only when that mod is installed, 0 = don't wait.");
 
-			Header("Animation (seconds)");
-			Slider("Hand comes up", v.raiseTime, Settings::kTime, "%.2f");
-			Slider("Hand goes to the backpack", v.stowTime, Settings::kTime, "%.2f");
-			Slider("Hand comes back", v.returnTime, Settings::kTime, "%.2f");
+			if (Section("Bows and crossbows")) {
+				Slider("Bow hand right", v.bowRight, Settings::kHoldRight, "%.1f", "Game units to the right of your eyes.");
+				Slider("Bow hand forward", v.bowForward, Settings::kHoldForward, "%.1f",
+					"Game units in front of your eyes. Your arm reaches about 36, further it stays stretched.");
+				Slider("Bow hand up", v.bowUp, Settings::kHoldUp, "%.1f", "Game units above (negative: below) your eyes.");
+				Slider("Bow lean left", v.bowLeanLeft, Settings::kHandAngle, "%.0f", "Degrees the bow tips to the left (-: right) from straight up.");
+				Slider("Bow lean forward", v.bowLeanForward, Settings::kHandAngle, "%.0f", "Degrees the bow tips away from you (-: towards you).");
+			}
+
+			if (Section("Third person")) {
+				Checkbox("Stay in third person", v.thirdPerson,
+					"In 3rd person the camera moves in over your shoulder instead of switching to 1st person,\n"
+					"and you see your hand put the item away.");
+				if (v.thirdPerson) {
+					ImGui::Indent();
+					Slider("Camera right", v.cameraRight, Settings::kCameraSide, "%.1f", "Game units the camera is to the right of your eyes.");
+					Slider("Camera back", v.cameraBack, Settings::kCameraBack, "%.1f", "Game units the camera is behind your eyes.");
+					Slider("Camera up", v.cameraUp, Settings::kCameraUp, "%.1f", "Game units the camera is above (negative: below) your eyes.");
+					Slider("Camera move time", v.cameraTime, Settings::kTime, "%.2f s", "Seconds the camera takes to fly in and back.");
+					Checkbox("Stand still while holding", v.standStill,
+						"Your character goes back to standing and holds still while looking at the item,\n"
+						"instead of playing idle animations.");
+					Checkbox("Look at the item", v.headLook, "Your character's head turns to look at the item in the hand.");
+					Slider("Hand right (3rd person)", v.bodyHoldRight, Settings::kHoldRight, "%.1f", "Game units to the right of your eyes.");
+					Slider("Hand forward (3rd person)", v.bodyHoldForward, Settings::kHoldForward, "%.1f", "Game units in front of your eyes.");
+					Slider("Hand up (3rd person)", v.bodyHoldUp, Settings::kBodyHoldUp, "%.1f", "Game units above (negative: below) your eyes.");
+					Slider("Item size (3rd person)", v.bodyItemScale, Settings::kItemScale, "%.2f", "Items (not weapons) are shown this much smaller in 3rd person.");
+					Slider("Item right (3rd person)", v.bodyItemRight, Settings::kItemOffset, "%.1f", "Moves the item to the right (-: left) as the camera sees it.");
+					Slider("Item forward (3rd person)", v.bodyItemForward, Settings::kItemOffset, "%.1f", "Moves the item away from the camera (-: towards it).");
+					Slider("Item up (3rd person)", v.bodyItemUp, Settings::kItemOffset, "%.1f", "Moves the item up (-: down) as the camera sees it.");
+					Slider("One-handed: hand along the handle (3rd person)", v.bodyGripSlide, Settings::kGripSlide, "%.1f",
+						"Slides your hand along the weapon's handle: + towards the pommel, - towards the blade.\n"
+						"For weapons your hand holds at the wrong place, e.g. at the crossguard.");
+					Slider("Two-handed: hand along the handle (3rd person)", v.bodyTwoHandedGripSlide, Settings::kGripSlide, "%.1f",
+						"The same for greatswords, battleaxes and warhammers: their long handles sit differently in the fist.");
+					Slider("Weapon: turn in the hand (3rd person)", v.bodyGripTurn, Settings::kHandAngle, "%.0f", "Turns the weapon around its blade inside your fist, in degrees.");
+					Slider("Weapon: tilt in the hand (3rd person)", v.bodyGripTilt, Settings::kGripAngle, "%.0f", "Tilts the weapon inside your fist, in degrees.");
+					ImGui::Unindent();
+				}
+				Slider("Wait for the pickup animation", v.animationWait, Settings::kWait, "%.2f s",
+					"Seconds a pickup in 3rd person waits, so the pickup animation of Immersive Interactions\n"
+					"plays first. Only when that mod is installed, 0 = don't wait.");
+			}
 
 			ImGui::Spacing();
 			if (ImGui::Button(Label("Reset to defaults").c_str())) {

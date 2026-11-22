@@ -33,4 +33,6 @@ namespace Inspect
 	// the key hint as it shows while holding an item (with the current keys and language), for the settings page's
 	// preview; nothing while an item is held (its own hint is on screen)
 	std::optional<std::string> PreviewHintText();
+	// the item info panel with an example item (an Iron Sword) where the settings put it; false hides it
+	void PreviewItemInfo(bool a_show);
 }

@@ -9,6 +9,7 @@
 #include "Keys.h"
 #include "Lang.h"
 #include "MathUtil.h"
+#include "PoseBlend.h"
 #include "QuickLoot.h"
 #include "Seen.h"
 #include "Settings.h"
@@ -183,6 +184,9 @@ namespace Inspect
 		constexpr float kEyeAboveHead = 6.0f;   // 3rd person: the eyes above the head bone (which sits at the top of the neck)
 		constexpr float kEyeForward = 5.0f;     // ... and in front of it
 		constexpr float kEyeHeight = 125.0f;    // a skeleton without a head bone
+		constexpr float kRaiseTime = 0.45f;    // seconds the hand takes to bring the item up
+		constexpr float kStowTime = 0.6f;      // ... to put it in the backpack
+		constexpr float kReturnTime = 0.5f;    // ... to come back (or to put the item back)
 		constexpr float kStowPickUpAt = 0.8f;  // part of the stow time after which the item is in the backpack
 		constexpr float kCameraTimeout = 2.0f;
 		constexpr float kCurl = 0.2f;          // finger bend while holding, radians per joint
@@ -300,6 +304,7 @@ namespace Inspect
 			// weapons: held by the grip (hand bone space), fingers closed on the handle, turned by the mouse
 			bool                          weapon{ false };
 			bool                          staff{ false };  // staves: the shaft runs along the model's +Y, through the grip
+			bool                          twoHanded{ false };  // its own "hand along the handle"
 			bool                          bow{ false };  // bows and crossbows: their own hold settings (held further out)
 			bool                          gripSet{ false };
 			NiTransform                   grip;
@@ -357,6 +362,10 @@ namespace Inspect
 			// hidden) until it's drawn, then the hand blends into the game's hold and the copy onto the real weapon.
 			EquipStep                                  equipStep{ EquipStep::kTake };
 			float                                      equipClock{ 0.0f };  // in the current step
+			bool                                       forceEquip{ false };  // kDraw: no draw animation, the graph went straight to weapon out
+			bool                                       fastDraw{ false };    // kDraw: the normal draw, played fast until it's done
+			bool                                       sawEquipping{ false };  // ... the graph's IsEquipping was on (the draw clip plays)
+			float                                      bodyBlendClock{ -1.0f };  // since the body's pose was held at the draw (< 0 = not held)
 			RE::EnchantmentItem*                       wantedEnchantment{ nullptr };  // which of the inventory's stacks is this one
 			float                                      wantedHealth{ 1.0f };          // (tempering)
 			std::vector<RE::NiPointer<RE::NiAVObject>> hiddenEquipped;  // the real weapon's models, hidden until the swap
@@ -547,9 +556,48 @@ namespace Inspect
 			return text;
 		}
 
+		HUD::ItemInfoLayout ItemInfoLayout(const Settings::Values& a_settings)
+		{
+			return { .right = a_settings.itemInfoSide != 0, .y = a_settings.itemInfoY, .size = a_settings.itemInfoSize };
+		}
+
+		// the held item as an inventory entry (with its own enchantment, tempering...), for the game's item card
+		std::shared_ptr<RE::InventoryEntryData> HeldEntry()
+		{
+			const auto object = RE::TESForm::LookupByID<RE::TESBoundObject>(state.baseID);
+			if (!object) {
+				return nullptr;
+			}
+			if (state.source == Source::kInventory) {
+				// the player's own entry: all its lists
+				auto inventory = Player()->GetInventory([object](RE::TESBoundObject& a_object) { return &a_object == object; });
+				if (const auto found = inventory.find(object); found != inventory.end() && found->second.second) {
+					return std::shared_ptr<RE::InventoryEntryData>(std::move(found->second.second));
+				}
+			}
+			std::shared_ptr<RE::InventoryEntryData> entry(new RE::InventoryEntryData(object, std::max(state.count, 1)));
+			if (state.source == Source::kWorld) {
+				if (const auto ref = state.ref.get()) {
+					entry->AddExtraList(&ref->extraList);  // only pointed to: the entry's list goes, not the ref's data
+				}
+			} else if (state.source == Source::kContainer && state.take.extraList) {
+				entry->AddExtraList(state.take.extraList);
+			}
+			return entry;
+		}
+
+		void ShowItemInfo()
+		{
+			const auto& settings = Settings::Get();
+			if (settings.showItemInfo) {
+				HUD::ShowItemInfo(HeldEntry(), state.name, ItemInfoLayout(settings));
+			}
+		}
+
 		void ShowHint()
 		{
 			const auto& settings = Settings::Get();
+			ShowItemInfo();  // with the hint, until the hand puts the item away
 			if (!settings.showHint) {
 				return;
 			}
@@ -610,6 +658,7 @@ namespace Inspect
 				state.hudModePushed = false;
 			}
 			HUD::HideHint();
+			HUD::HideItemInfo();
 		}
 
 		// Put in the backpack: the camera is the player's again right away (the hand follows the view in 1st person; in
@@ -737,6 +786,7 @@ namespace Inspect
 				state.bow = weapon->IsBow() || weapon->IsCrossbow();
 				state.stringBow = weapon->IsBow();
 				state.staff = weapon->IsStaff();
+				state.twoHanded = weapon->IsTwoHandedSword() || weapon->IsTwoHandedAxe();  // greatswords, battleaxes, warhammers
 			}
 		}
 
@@ -920,6 +970,7 @@ namespace Inspect
 			StopLooking(true);
 			WorldPause::End();
 			Telekinesis::Stop();
+			PoseBlend::Release();
 			ArmPose::Release();
 			HeadLook::Release();
 			BodyArm::Restore();
@@ -2268,7 +2319,7 @@ namespace Inspect
 			state.takeCutWeight = 1.0f - handOver;
 			state.takeCutClock = 0.0f;
 			state.takeIdle = false;
-			state.time = progress * kStowPickUpAt * Settings::Get().stowTime;  // the pocket path from that far on
+			state.time = progress * kStowPickUpAt * kStowTime;  // the pocket path from that far on
 			Player()->NotifyAnimationGraph("IdleForceDefaultState");
 			logs::info("Moving during the take animation ({:.2f} s in): cut, the hand goes on to the pocket", state.takeClock);
 		}
@@ -2305,6 +2356,7 @@ namespace Inspect
 		// the hand stops holding: the item goes into the backpack (kStow) or back where it was (kPutBack)
 		void LeaveHold(Phase a_next)
 		{
+			HUD::HideItemInfo();  // the hand lets go of it
 			if (a_next == Phase::kStow) {
 				WakeWorldForTheft();
 				StartTakeIdle();
@@ -2354,8 +2406,15 @@ namespace Inspect
 		constexpr float kEquipWait = 1.0f;     // seconds for the equip to show in the hand slots
 		constexpr float kDrawWait = 3.0f;      // ... and for the draw
 		constexpr float kEquipBlend = 0.7f;    // seconds our hand and the copy take to go over to the game's hold (from
-		                                       // when the drawing hand has the real weapon, while it swings it up)
-		constexpr float kEquipTimeout = kEquipWait + kDrawWait + kEquipBlend + 2.0f;
+		                                       // when the real weapon is in the hand)
+		constexpr float kForceEquipWait = 0.4f;  // seconds the force equip may take to put the weapon in the hand
+		constexpr float kFastDraw = 20.0f;       // the fallback draw plays this much faster until it's done (a few frames)
+		constexpr float kFastDrawMax = 0.25f;    // ... at most this long (5 s of animation) if the graph never says it's equipping
+		constexpr float kBodyBlend = 0.6f;       // seconds the body takes from its pose at the draw into the drawn pose
+		constexpr float kEquipTimeout = kEquipWait + kForceEquipWait + kDrawWait + kEquipBlend + 2.0f;
+		// The behavior graph's own "weapon out without the draw" (its force equip states play the combat idle right away;
+		// the game uses them e.g. when a drawn weapon is swapped)
+		constexpr const char* kForceEquipEvent = "WeapForceEquip";
 
 		bool CanEquip()
 		{
@@ -2502,6 +2561,7 @@ namespace Inspect
 			}
 			const auto object = RE::TESForm::LookupByID<RE::TESBoundObject>(state.baseID);
 			state.countBefore = object ? ItemCount(object) : 0;
+			HUD::HideItemInfo();
 			WakeWorldForTheft();  // first: a theft is only seen once the world runs
 			WorldPause::End();    // a drawn weapon: the world goes on
 			StopLooking(false);
@@ -2528,6 +2588,9 @@ namespace Inspect
 				return;
 			}
 			state.equipClock += a_delta;
+			if (state.bodyBlendClock >= 0.0f) {
+				state.bodyBlendClock += a_delta;
+			}
 			HideEquipped(object);
 			const auto next = [](EquipStep a_step) {
 				state.equipStep = a_step;
@@ -2546,7 +2609,16 @@ namespace Inspect
 				break;
 			case EquipStep::kEquip:
 				if (Equipped(a_player, object)) {
-					a_player->DrawWeaponMagicHands(true);
+					// the body as it is now (holding): it flows from here into the drawn pose while the draw jumps ahead
+					PoseBlend::Capture(ArmRoot());
+					state.bodyBlendClock = 0.0f;
+					// straight to weapon out: no draw animation (the hand already holds the weapon)
+					state.forceEquip = a_player->NotifyAnimationGraph(kForceEquipEvent);
+					if (!state.forceEquip) {
+						logs::info("The behavior graph didn't take {}: the weapon is drawn (fast)", kForceEquipEvent);
+						a_player->DrawWeaponMagicHands(true);
+						state.fastDraw = true;
+					}
 					next(EquipStep::kDraw);
 				} else if (state.equipClock > kEquipWait) {
 					logs::warn("The weapon couldn't be equipped: it stays in the inventory");
@@ -2557,11 +2629,43 @@ namespace Inspect
 				break;
 			case EquipStep::kDraw:
 				{
+					const auto actorState = a_player->AsActorState();
 					const bool inHand = EquippedInHand();
-					const bool drawn = a_player->AsActorState()->GetWeaponState() == RE::WEAPON_STATE::kDrawn;
-					if (inHand || drawn || state.equipClock > kDrawWait) {
-						logs::info("Blending into the drawn weapon {:.2f} s into the draw ({})", state.equipClock,
-							inHand ? "out of the sheath" : drawn ? "drawn" : "waited too long");
+					const bool drawn = actorState->GetWeaponState() == RE::WEAPON_STATE::kDrawn;
+					if (state.forceEquip) {
+						if (inHand && !drawn) {
+							actorState->actorState2.weaponState = RE::WEAPON_STATE::kDrawn;  // in the hand: it counts as drawn
+						} else if (!inHand && state.equipClock > kForceEquipWait) {
+							// the graph went to weapon out but the weapon didn't come to the hand: the normal draw after all
+							logs::info("{} didn't put the weapon in the hand: the weapon is drawn (fast)", kForceEquipEvent);
+							state.forceEquip = false;
+							state.fastDraw = true;
+							if (drawn) {
+								actorState->actorState2.weaponState = RE::WEAPON_STATE::kSheathed;  // else the draw does nothing
+							}
+							a_player->DrawWeaponMagicHands(true);
+							state.equipClock = 0.0f;
+							break;
+						}
+					}
+					// force equip: from when the weapon is in the hand. The fallback draw: only once its clip is over (the
+					// weapon is in the hand and counts as drawn from its first frames while the clip still reaches for the
+					// sheath): the graph's IsEquipping goes off, so none of it is seen
+					bool done = inHand;
+					bool equipping = false;
+					if (!state.forceEquip) {
+						const bool known = a_player->GetGraphVariableBool("IsEquipping", equipping);
+						state.sawEquipping |= known && equipping;
+						done = state.sawEquipping ? !equipping : state.equipClock >= kFastDrawMax;
+					}
+					if (done || state.equipClock > kDrawWait) {
+						state.fastDraw = false;
+						logs::info("Blending into the drawn weapon {:.2f} s after {} ({})", state.equipClock,
+							state.forceEquip ? "the force equip" : "the fast draw started",
+							!done                ? "waited too long" :
+							state.forceEquip     ? "in the hand" :
+							state.sawEquipping   ? "its clip is over" :
+							                       "the graph never said it was equipping");
 						state.cameraIn = false;  // 3rd person: the camera flies back meanwhile
 						next(EquipStep::kBlend);
 					}
@@ -2640,14 +2744,14 @@ namespace Inspect
 			constexpr float kSlack = 3.0f;
 			switch (state.phase) {
 			case Phase::kRaise:
-				return a_settings.raiseTime + kSlack;
+				return kRaiseTime + kSlack;
 			case Phase::kSettle:
 				return kSettleTime + kSlack;
 			case Phase::kStow:
-				return a_settings.stowTime + kStealWake + kSlack;
+				return kStowTime + kStealWake + kSlack;
 			case Phase::kReturn:
 			case Phase::kPutBack:
-				return a_settings.returnTime + kSlack;
+				return kReturnTime + kSlack;
 			case Phase::kCameraBack:
 				return a_settings.cameraTime + kSlack;
 			case Phase::kWaitAnimation:
@@ -2837,7 +2941,7 @@ namespace Inspect
 				}
 				break;
 			case Phase::kRaise:
-				if (state.time >= settings.raiseTime) {
+				if (state.time >= kRaiseTime) {
 					PlayItemSound();
 					SetPhase(Phase::kHold);
 				}
@@ -2902,7 +3006,7 @@ namespace Inspect
 				if (state.takeIdle && !state.pickedUp && MoveInput()) {
 					CutTakeIdle();
 				}
-				if (!state.pickedUp && (state.takeIdle ? state.takeClock >= kTakePocketAt : state.time >= settings.stowTime * kStowPickUpAt) && TheftSeen()) {
+				if (!state.pickedUp && (state.takeIdle ? state.takeClock >= kTakePocketAt : state.time >= kStowTime * kStowPickUpAt) && TheftSeen()) {
 					DetachItem();
 					PutInInventory();
 					// from the player's body, not the 1st person hand: the hand is on its way out of view and the camera
@@ -2917,13 +3021,13 @@ namespace Inspect
 					End();
 					break;
 				}
-				if (state.pickedUp && state.time >= settings.stowTime) {
+				if (state.pickedUp && state.time >= kStowTime) {
 					SetPhase(Phase::kReturn);
 					state.cameraIn = false;  // 3rd person: the camera flies back while the empty hand comes back
 				}
 				break;
 			case Phase::kReturn:
-				if (state.time >= settings.returnTime) {
+				if (state.time >= kReturnTime) {
 					End();
 				}
 				break;
@@ -2936,7 +3040,7 @@ namespace Inspect
 				}
 				break;
 			case Phase::kPutBack:
-				if (state.time >= settings.returnTime) {
+				if (state.time >= kReturnTime) {
 					const auto landed = state.ref.get();
 					PlayTelekinesisSound(landed && landed->Get3D() ? landed->Get3D() : player->Get3D(false));  // where it lands
 					logs::info("Put back");
@@ -3017,7 +3121,8 @@ namespace Inspect
 		void ApplyFist()
 		{
 			const auto& settings = Settings::Get();
-			const float slide = state.thirdPerson ? settings.bodyGripSlide : settings.gripSlide;
+			const float slide = state.twoHanded ? (state.thirdPerson ? settings.bodyTwoHandedGripSlide : settings.twoHandedGripSlide) :
+			                                      (state.thirdPerson ? settings.bodyGripSlide : settings.gripSlide);
 			const float turn = state.thirdPerson ? settings.bodyGripTurn : settings.gripTurn;
 			const float tilt = state.thirdPerson ? settings.bodyGripTilt : settings.gripTilt;
 			state.grip = state.weaponNode;
@@ -3309,7 +3414,7 @@ namespace Inspect
 			}
 			switch (state.phase) {
 			case Phase::kRaise:
-				goal.weight = Smooth(state.time / settings.raiseTime);
+				goal.weight = Smooth(state.time / kRaiseTime);
 				goal.curl = scaled(goal.weight);
 				break;
 			case Phase::kStow:
@@ -3319,7 +3424,7 @@ namespace Inspect
 					// behind the shoulder (going over from the hold pose in its first half), the return plays the rest
 					// and hands the arm back to its animation
 					const bool      stow = state.phase == Phase::kStow;
-					const float     r = Clamp01(state.time / (stow ? settings.stowTime : settings.returnTime));
+					const float     r = Clamp01(state.time / (stow ? kStowTime : kReturnTime));
 					const StowKey   key = BodyStowAt(stow ? r * kBodyStowBack : kBodyStowBack + r * (kBodyStowLength - kBodyStowBack));
 					const float     b = stow ? Smooth(r / kBodyStowBlend) : 1.0f;
 					const NiPoint3  hold = at({ holdAt.x, holdAt.y + state.distanceOffset, holdAt.z });
@@ -3350,7 +3455,7 @@ namespace Inspect
 				if (state.thirdPerson) {
 					// a little up first, then down in an arc to the right hip, the item slips into the pocket; the return
 					// lets the arm hang back into its own animation from there (the pocket is close to where it hangs)
-					const float     s = state.phase == Phase::kStow ? Smooth(state.time / settings.stowTime) : 1.0f;
+					const float     s = state.phase == Phase::kStow ? Smooth(state.time / kStowTime) : 1.0f;
 					const NiPoint3  holdLocal{ holdAt.x, holdAt.y + state.distanceOffset, holdAt.z };
 					const NiPoint3  start = at(holdLocal);
 					const NiPoint3  lift = at(holdLocal + kPocketLift);
@@ -3369,7 +3474,7 @@ namespace Inspect
 						goal.hand = Slerp(state.holdHand, AlignAxes(handFrame->fingerAxis, handFrame->palmAxis, Column(pocket, 0), Column(pocket, 1)), s * s);
 					}
 					if (state.phase == Phase::kReturn) {
-						goal.weight = 1.0f - Smooth(state.time / settings.returnTime);
+						goal.weight = 1.0f - Smooth(state.time / kReturnTime);
 						goal.curl = scaled(goal.weight);
 					}
 					if (state.takeCutClock >= 0.0f) {
@@ -3379,7 +3484,7 @@ namespace Inspect
 					}
 					break;
 				} else {
-					const float s = state.phase == Phase::kStow ? Smooth(state.time / settings.stowTime) : 1.0f;
+					const float s = state.phase == Phase::kStow ? Smooth(state.time / kStowTime) : 1.0f;
 					// quadratic curve hold -> via -> end
 					const NiPoint3 start = at({ holdAt.x, holdAt.y + state.distanceOffset, holdAt.z });
 					const NiPoint3 via = at(kStowVia);
@@ -3394,13 +3499,13 @@ namespace Inspect
 						goal.hand = Slerp(state.holdHand, AlignAxes(handFrame->fingerAxis, handFrame->palmAxis, stowFingers, stowPalm), s);
 					}
 					if (state.phase == Phase::kReturn) {
-						goal.weight = 1.0f - Smooth(state.time / settings.returnTime);
+						goal.weight = 1.0f - Smooth(state.time / kReturnTime);
 						goal.curl = scaled(goal.weight);
 					}
 					break;
 				}
 			case Phase::kPutBack:
-				goal.weight = 1.0f - Smooth(state.time / settings.returnTime);
+				goal.weight = 1.0f - Smooth(state.time / kReturnTime);
 				goal.curl = scaled(goal.weight);
 				break;
 			case Phase::kEquip:
@@ -3436,7 +3541,7 @@ namespace Inspect
 			case Phase::kRaise:
 				// from the world the item flies from where it lay (out of a container, from inside it); out of the
 				// inventory it comes up on the palm
-				PlaceItem(fromRef ? Blend(state.start, HeldItem(*hand, a_view), Smooth(state.time / settings.raiseTime)) : HeldItem(*hand, a_view));
+				PlaceItem(fromRef ? Blend(state.start, HeldItem(*hand, a_view), Smooth(state.time / kRaiseTime)) : HeldItem(*hand, a_view));
 				break;
 			case Phase::kHold:
 			case Phase::kBuying:
@@ -3456,7 +3561,7 @@ namespace Inspect
 					NiTransform carried = Combine(hand->world, state.inHand);
 					if (state.thirdPerson && !settings.stowOverShoulder) {
 						// slips into the pocket: shrinks around its middle until it's gone
-						const float    r = state.time / settings.stowTime;
+						const float    r = state.time / kStowTime;
 						const float    left = std::max(1.0f - Smooth(state.takeIdle ? (state.takeClock - kTakeShrinkFrom) / (kTakePocketAt - kTakeShrinkFrom) :
 						                                                              (r - kPocketShrinkFrom) / (kStowPickUpAt - kPocketShrinkFrom)), 0.01f);
 						const NiPoint3 middle = carried.translate + carried.rotate * (state.center * carried.scale);
@@ -3468,7 +3573,7 @@ namespace Inspect
 			case Phase::kPutBack:
 				{
 					// from the hand back to where it lay (into the container / plant)
-					const float t = Smooth(state.time / settings.returnTime);
+					const float t = Smooth(state.time / kReturnTime);
 					PlaceItem(Blend(HeldItem(*hand, a_view), state.start, t));
 					break;
 				}
@@ -3487,6 +3592,8 @@ namespace Inspect
 				break;
 			}
 		}
+
+		void BlendBody(RE::NiAVObject* a_root);
 
 		// runs after the 1st person camera update, when the animation already posed the 1st person skeleton
 		void OnFirstPersonCamera()
@@ -3508,11 +3615,26 @@ namespace Inspect
 			}
 			ShowCameraArms(true);
 			const auto frame = MakeCameraFrame(camera->world.translate, player->data.angle.x, player->data.angle.z);
+			BlendBody(root);
 			PoseArm(root, frame, frame, 1.0f);
 			ApplyHeadLook(frame);
 		}
 
 		bool bodyHook{ false };  // the 3rd person arm is posed right after the player's skeletons were updated
+
+		// Equipping: the whole skeleton eases from its pose at the draw into what the (fast) draw animation does, before
+		// our arm is posed on top. Let go once it's all animation.
+		void BlendBody(RE::NiAVObject* a_root)
+		{
+			if (state.bodyBlendClock < 0.0f) {
+				return;
+			}
+			const float weight = Smooth(state.bodyBlendClock / kBodyBlend);
+			if (!PoseBlend::Apply(a_root, weight) || weight >= 1.0f) {
+				PoseBlend::Release();
+				state.bodyBlendClock = -1.0f;
+			}
+		}
 
 		bool PosingBody()
 		{
@@ -3526,6 +3648,7 @@ namespace Inspect
 			const auto frames = ThirdPersonFrames();
 			const auto root = BodyRoot();
 			if (frames && root) {
+				BlendBody(root);
 				PoseArm(root, frames->body, frames->view, state.bodyScale);
 			}
 		}
@@ -3597,12 +3720,17 @@ namespace Inspect
 			static inline REL::Relocation<decltype(thunk)> func;
 		};
 
-		// The player's animation update (the 3rd person behavior graph): slowed down to a stop while the body holds still
+		// The player's animation update (the 3rd person behavior graph): slowed down to a stop while the body holds still;
+		// sped up while a fallback draw takes the weapon out of its sheath
 		struct PlayerAnimation
 		{
 			static void thunk(RE::PlayerCharacter* a_this, float a_delta)
 			{
-				func(a_this, state.thirdPerson ? a_delta * (1.0f - state.stillness) : a_delta);
+				float speed = state.thirdPerson ? 1.0f - state.stillness : 1.0f;
+				if (state.fastDraw && state.phase == Phase::kEquip && state.equipStep == EquipStep::kDraw) {
+					speed *= kFastDraw;
+				}
+				func(a_this, a_delta * speed);
 			}
 			static inline REL::Relocation<decltype(thunk)> func;
 		};
@@ -3833,6 +3961,7 @@ namespace Inspect
 		ArmPose::Forget();
 		HeadLook::Forget();
 		ContainerLid::Forget();
+		PoseBlend::Release();  // holds its bones itself: safe to let go
 		searchedContainer = 0;
 		takeIdleLeft = -1.0f;
 		forSaleRef = {};
@@ -3882,5 +4011,20 @@ namespace Inspect
 			return std::nullopt;  // the real hint is on screen
 		}
 		return HintText(Lang::T("Example item"), false, true, Settings::Get().equipWeapons);
+	}
+
+	void PreviewItemInfo(bool a_show)
+	{
+		if (Active()) {
+			return;  // the held item's own info is on screen
+		}
+		const auto& settings = Settings::Get();
+		constexpr RE::FormID kIronSword = 0x00012EB7;  // Skyrim.esm
+		const auto           sword = RE::TESForm::LookupByID<RE::TESBoundObject>(kIronSword);
+		if (!a_show || !settings.showItemInfo || !sword) {
+			HUD::HideItemInfo();
+			return;
+		}
+		HUD::ShowItemInfo(std::shared_ptr<RE::InventoryEntryData>(new RE::InventoryEntryData(sword, 1)), sword->GetName(), ItemInfoLayout(settings));
 	}
 }

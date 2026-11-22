@@ -89,6 +89,10 @@ namespace Settings
 			a_func("General", "fHintX", a_values.hintX, kHintPosition);
 			a_func("General", "fHintY", a_values.hintY, kHintPosition);
 			a_func("General", "fHintSize", a_values.hintSize, kHintSize);
+			a_func("General", "bShowItemInfo", a_values.showItemInfo);
+			a_func("General", "iItemInfoSide", a_values.itemInfoSide);
+			a_func("General", "fItemInfoY", a_values.itemInfoY, kHintPosition);
+			a_func("General", "fItemInfoSize", a_values.itemInfoSize, kItemInfoSize);
 			a_func("General", "bUniqueOnly", a_values.uniqueOnly);
 			a_func("General", "bWorldWaits", a_values.worldWaits);
 			a_func("General", "bFadeTransition", a_values.fadeTransition);
@@ -132,6 +136,7 @@ namespace Settings
 			a_func("Weapons", "fWeaponRoll", a_values.weaponRoll, kHandAngle);
 			a_func("Weapons", "bEquipWeapons", a_values.equipWeapons);
 			a_func("Weapons", "fGripSlide", a_values.gripSlide, kGripSlide);
+			a_func("Weapons", "fTwoHandedGripSlide", a_values.twoHandedGripSlide, kGripSlide);
 			a_func("Weapons", "fGripTurn", a_values.gripTurn, kHandAngle);
 			a_func("Weapons", "fGripTilt", a_values.gripTilt, kGripAngle);
 			a_func("Bows", "fBowRight", a_values.bowRight, kHoldRight);
@@ -156,6 +161,7 @@ namespace Settings
 			a_func("ThirdPerson", "fHandForward", a_values.bodyHoldForward, kHoldForward);
 			a_func("ThirdPerson", "fHandUp", a_values.bodyHoldUp, kBodyHoldUp);
 			a_func("ThirdPerson", "fWeaponGripSlide", a_values.bodyGripSlide, kGripSlide);
+			a_func("ThirdPerson", "fTwoHandedGripSlide", a_values.bodyTwoHandedGripSlide, kGripSlide);
 			a_func("ThirdPerson", "fWeaponGripTurn", a_values.bodyGripTurn, kHandAngle);
 			a_func("ThirdPerson", "fWeaponGripTilt", a_values.bodyGripTilt, kGripAngle);
 			a_func("QuickLoot", "bQuickLoot", a_values.quickLoot);
@@ -163,9 +169,6 @@ namespace Settings
 			a_func("QuickLoot", "fSearchAgainTime", a_values.searchAgainTime, kSearchTime);
 			a_func("QuickLoot", "bLootBodies", a_values.lootBodies);
 			a_func("QuickLoot", "bBigChestsOnly", a_values.bigChestsOnly);
-			a_func("Hold", "fRaiseTime", a_values.raiseTime, kTime);
-			a_func("Hold", "fStowTime", a_values.stowTime, kTime);
-			a_func("Hold", "fReturnTime", a_values.returnTime, kTime);
 		}
 
 		struct Reader

@@ -16,8 +16,8 @@ When you take an item from the world it doesn't go straight to your inventory:
    The camera and your movement are yours again as soon as you press it: you can look around and walk on while the
    hand puts the item away (walking cuts the take animation short and the hand finishes on its own).
    Press **R** (gamepad **B**) to put it back where it was instead.
-   Holding a weapon, press **G** (gamepad **X**) to use it right away: it's equipped and drawn, and your hand goes
-   over to the normal weapon hold.
+   Holding a weapon, press **G** (gamepad **X**) to use it right away: it's equipped and you're straight in your
+   combat stance (no draw animation); your hand and body flow smoothly into the normal weapon hold.
    Press **F** (gamepad right stick click) to switch between 3rd and 1st person while you hold it (with a short fade).
 
 Afterwards the camera goes back to where it was (or stays in the view you switched to with F).
@@ -35,8 +35,10 @@ Afterwards the camera goes back to where it was (or stays in the view you switch
 - Turn on "Only in 1st person" to take items the normal way in 3rd person: they go to your hand only in 1st person.
 - Turn on "Only unique items" to hold only quest items, enchanted items, Daedric artifacts and Daedric weapons; the rest
   is picked up as usual.
-- The key hint's place on screen and its size can be set in the menu ("Show the hint on screen" shows it while you
-  move the sliders).
+- While you hold an item its info is shown at the side of the screen, like the inventory's item card: name, damage or
+  armor, weight, value and enchantment / effects. The game's own item info under the crosshair is hidden meanwhile.
+- The key hint's and the item info's place on screen and size can be set in the menu ("Show the hint and item info on
+  screen" shows them while you move the sliders).
 - Optional "Hold a key to inspect": items go to your hand only when you hold a key (Left Shift / LB by default) while
   you press Activate; a normal press picks them up as usual.
 - In the inventory, scrolling up on an item (the vanilla zoom) closes the inventory and puts the item in your hand.

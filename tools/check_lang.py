@@ -12,7 +12,7 @@ SRC = ROOT / "src"
 LANG = ROOT / "res" / "lang"
 LANGUAGES = ["french", "german", "italian", "spanish", "polish", "russian", "japanese", "chinese", "chinese_simplified"]
 STRING = r'"(?:[^"\\]|\\.)*"'
-HELPERS = r"\b(?:T|Lang::T|Label|Header|Checkbox|Slider|KeyRow|Help)\((.*?)\);"
+HELPERS = r"\b(?:T|Lang::T|Label|Header|Section|Checkbox|Slider|KeyRow|Help)\((.*?)\)(?:;|\)\s*\{)"
 NOT_TEXT = {"%.1f", "%.0f", "%.2f", "%.2f s", "%s", "store", "putback", "look", "switchview", "inspect", "equip", "%.0f %%", "{}##{}", "{}_kb", "{}_pad", "[{}] {}", "[{}] {}    [{}] {}"}
 MENU_ENTRIES = {"Item Inspection", "Settings", "Languages"}  # passed to the text helper as variables
 ESCAPES = {"n": "\n", "t": "\t", '"': '"', "\\": "\\", "'": "'"}
@@ -41,7 +41,7 @@ def literals(text):
 
 def main():
     used = set(MENU_ENTRIES)
-    for name in ("Menu.cpp", "Inspect.cpp"):
+    for name in ("Menu.cpp", "Inspect.cpp", "HUD.cpp"):
         code = (SRC / name).read_text(encoding="utf-8")
         for call in re.finditer(HELPERS, code, re.S):
             used.update(unescape(text) for text in literals(call.group(1)) if text and text not in NOT_TEXT)
