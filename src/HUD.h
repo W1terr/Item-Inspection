@@ -12,9 +12,10 @@ namespace HUD
 	// edge); the text lines up with that side (left, centered, right). a_size: font size.
 	void ShowHint(const std::string& a_text, float a_x, float a_y, float a_size);
 	void HideHint();
-	// The game's crosshair item info ("Take <name>, weight, value") over the held item's hidden world copy: the HUD's
-	// SetCrosshairTarget gets ours in front of it, which shows no target while on; off replays the game's last call
+	// Better Third Person Selection's crosshair widget (its copy of the HUD's item info, which our hold mode hides) is
+	// hidden through its API while on; off has the game publish the crosshair target again
 	void HideRollover(bool a_hide);
+	void Update();  // every frame (game thread): the crosshair refresh after a hold
 
 	// A panel at the side of the screen with what the inventory's item card shows for the item: name, damage or armor
 	// (with the player's perks and skills), weight, value, enchantment / effects text. Filled by the game's own item card.

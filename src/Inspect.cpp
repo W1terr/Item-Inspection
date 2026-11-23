@@ -2810,6 +2810,7 @@ namespace Inspect
 			ContainerLid::Update(a_delta);
 			Fade::Update(a_delta);
 			UpdateTakeIdleEnd(a_delta);
+			HUD::Update();
 			if (!Active()) {
 				return;
 			}

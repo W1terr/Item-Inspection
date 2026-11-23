@@ -46,6 +46,79 @@ namespace HUD
 			}
 		}
 
+		// ---- the crosshair item info ----
+
+		// The HUD's own rollover ("Take <name>", weight, value) is one of the elements our hold mode hides (vanilla HUD,
+		// moreHUD's widgets follow the mode too). Nothing of the HUD's script is replaced: 3.0 put a filter in front of
+		// SetCrosshairTarget, which froze the rollover for good in some load orders (moreHUD + BTPS).
+		constexpr double kMaxRemovableDepth = 1048575.0;  // AS2 can't remove objects above this depth
+
+		std::atomic<bool> holdMode{ false };          // game thread: our HUD mode should be on (read by the UI tasks)
+		std::atomic<bool> rolloverWanted{ false };    // game thread: an item is held
+		std::atomic<bool> refreshCrosshair{ false };  // game thread: publish the crosshair target again next frame
+
+		// Better Third Person Selection draws its own crosshair widget (a copy of the HUD's rollover text, the HUD's own
+		// one hidden); while an item is held it's hidden through BTPS's API (V0, its BTPS_API_decl.h)
+		namespace BTPS
+		{
+			class API_V0
+			{
+			public:
+				virtual bool GetSelectionEnabled() noexcept = 0;
+				virtual bool GetWidget3DEnabled() noexcept = 0;
+				virtual void HideSelectionWidget(std::string a_source) noexcept = 0;
+				virtual void ShowSelectionWidget(std::string a_source) noexcept = 0;
+			};
+
+			constexpr auto kSource = "ItemInspection";  // short: no heap string handed to the other DLL
+
+			API_V0* Get()
+			{
+				static API_V0* api{ nullptr };
+				static bool    requested{ false };
+				if (!requested) {
+					requested = true;
+					if (const auto module = GetModuleHandleW(L"BetterThirdPersonSelection.dll")) {
+						using Request = void* (*)(int);
+						if (const auto request = reinterpret_cast<Request>(GetProcAddress(module, "RequestPluginAPI"))) {
+							api = static_cast<API_V0*>(request(0));
+						}
+						logs::info("Better Third Person Selection {}", api ? "found: its widget is hidden while an item is held" : "found without its API");
+					}
+				}
+				return api;
+			}
+		}
+
+		// a free depth on a_parent that AS2 can still remove (getNextHighestDepth can be above that when another mod put
+		// something very high; then removeMovieClip / removeTextField do nothing and our text would stay for good)
+		double RemovableDepth(RE::GFxValue& a_parent, double a_fallback)
+		{
+			RE::GFxValue next;
+			a_parent.Invoke("getNextHighestDepth", &next);
+			const double depth = next.IsNumber() ? next.GetNumber() : a_fallback;
+			if (depth >= 0.0 && depth <= kMaxRemovableDepth) {
+				return depth;
+			}
+			for (double candidate = kMaxRemovableDepth; candidate > kMaxRemovableDepth - 2000.0; candidate -= 1.0) {
+				RE::GFxValue at;
+				RE::GFxValue arg;
+				arg.SetNumber(candidate);
+				a_parent.Invoke("getInstanceAtDepth", &at, &arg, 1);
+				if (at.IsUndefined() || at.IsNull()) {
+					return candidate;
+				}
+			}
+			return a_fallback;
+		}
+
+		void SetVisible(RE::GFxValue& a_object, bool a_visible)
+		{
+			RE::GFxValue value;
+			value.SetBoolean(a_visible);
+			a_object.SetMember("_visible", value);
+		}
+
 		// a text field on the HUD's root (placed by Layout), in the game's font with a shadow
 		RE::GFxValue MakeHint(RE::GFxMovieView& a_movie)
 		{
@@ -58,11 +131,9 @@ namespace HUD
 			if (!a_movie.GetVariable(&root, "_root") || !root.IsObject()) {
 				return {};
 			}
-			RE::GFxValue depth;
-			root.Invoke("getNextHighestDepth", &depth);
 			std::array<RE::GFxValue, 6> args;
 			args[0].SetString(kHintName);
-			args[1].SetNumber(depth.IsNumber() ? depth.GetNumber() : 9000.0);
+			args[1].SetNumber(RemovableDepth(root, 9000.0));
 			args[2].SetNumber(0.0);
 			args[3].SetNumber(0.0);
 			args[4].SetNumber(kHintWidth);
@@ -117,134 +188,6 @@ namespace HUD
 			}
 		}
 
-		// ---- the crosshair item info ----
-
-		constexpr auto kOriginalCrosshair = "ItemInspectionSetCrosshairTarget";  // the HUD's own function, moved aside
-
-		// one argument of the game's last SetCrosshairTarget call (kept to show it again)
-		struct SavedArg
-		{
-			enum class Kind
-			{
-				kUndefined,
-				kBool,
-				kNumber,
-				kString
-			};
-			Kind        kind{ Kind::kUndefined };
-			bool        boolean{ false };
-			double      number{ 0.0 };
-			std::string string;
-		};
-
-		// UI thread only
-		bool                  hideRollover{ false };
-		bool                  haveLastCrosshair{ false };
-		std::vector<SavedArg> lastCrosshair;
-
-		void CallOriginal(RE::GFxValue& a_hud, RE::GFxValue* a_result, const RE::GFxValue* a_args, std::uint32_t a_count)
-		{
-			a_hud.Invoke(kOriginalCrosshair, a_result, a_args, a_count);
-		}
-
-		// what the vanilla HUD's load door info sends to clear it: no target, no name
-		void CallNoTarget(RE::GFxValue& a_hud)
-		{
-			std::array<RE::GFxValue, 5> args;
-			args[0].SetBoolean(false);
-			args[1].SetString("");
-			args[2].SetBoolean(false);
-			args[3].SetBoolean(false);
-			args[4].SetBoolean(false);
-			CallOriginal(a_hud, nullptr, args.data(), static_cast<std::uint32_t>(args.size()));
-		}
-
-		void ReplayLastCrosshair(RE::GFxMovieView& a_movie, RE::GFxValue& a_hud)
-		{
-			if (!haveLastCrosshair) {
-				CallNoTarget(a_hud);
-				return;
-			}
-			std::vector<RE::GFxValue> args(lastCrosshair.size());
-			for (std::size_t i = 0; i < lastCrosshair.size(); ++i) {
-				const auto& saved = lastCrosshair[i];
-				switch (saved.kind) {
-				case SavedArg::Kind::kBool:
-					args[i].SetBoolean(saved.boolean);
-					break;
-				case SavedArg::Kind::kNumber:
-					args[i].SetNumber(saved.number);
-					break;
-				case SavedArg::Kind::kString:
-					a_movie.CreateString(&args[i], saved.string.c_str());
-					break;
-				default:
-					break;
-				}
-			}
-			CallOriginal(a_hud, nullptr, args.data(), static_cast<std::uint32_t>(args.size()));
-		}
-
-		// in front of the HUD's SetCrosshairTarget (the game calls it by name, through GameDelegate)
-		class CrosshairFilter : public RE::GFxFunctionHandler
-		{
-		public:
-			void Call(Params& a_params) override
-			{
-				if (!a_params.thisPtr) {
-					return;
-				}
-				lastCrosshair.clear();
-				for (std::uint32_t i = 0; i < a_params.argCount; ++i) {
-					const auto& arg = a_params.args[i];
-					SavedArg    saved;
-					if (arg.IsBool()) {
-						saved = { SavedArg::Kind::kBool, arg.GetBool() };
-					} else if (arg.IsNumber()) {
-						saved = { SavedArg::Kind::kNumber, false, arg.GetNumber() };
-					} else if (arg.IsString()) {
-						saved = { SavedArg::Kind::kString, false, 0.0, arg.GetString() };
-					}
-					lastCrosshair.push_back(std::move(saved));
-				}
-				haveLastCrosshair = true;
-				if (hideRollover) {
-					CallNoTarget(*a_params.thisPtr);
-				} else {
-					CallOriginal(*a_params.thisPtr, a_params.retVal, a_params.args, a_params.argCount);
-				}
-			}
-		};
-
-		// the HUD script's object, with our filter in front of its SetCrosshairTarget (put there once per HUD movie)
-		bool CrosshairHUD(RE::GFxMovieView& a_movie, RE::GFxValue& a_hud)
-		{
-			if (!a_movie.GetVariable(&a_hud, "_root.HUDMovieBaseInstance") || !a_hud.IsObject()) {
-				return false;
-			}
-			RE::GFxValue moved;
-			if (a_hud.GetMember(kOriginalCrosshair, &moved) && !moved.IsUndefined()) {
-				return true;
-			}
-			RE::GFxValue original;
-			if (!a_hud.GetMember("SetCrosshairTarget", &original) || original.IsUndefined()) {
-				static bool warned{ false };
-				if (!warned) {
-					logs::warn("The HUD has no SetCrosshairTarget: its item info under the crosshair stays");
-					warned = true;
-				}
-				return false;
-			}
-			static const RE::GPtr<CrosshairFilter> filter{ new CrosshairFilter };
-			RE::GFxValue                           function;
-			a_movie.CreateFunction(&function, filter.get());
-			a_hud.SetMember(kOriginalCrosshair, original);
-			a_hud.SetMember("SetCrosshairTarget", function);
-			haveLastCrosshair = false;
-			logs::info("The HUD's crosshair item info goes through us now (hidden while an item is held)");
-			return true;
-		}
-
 		// ---- the item info panel ----
 
 		constexpr auto  kInfoName = "ItemInspectionInfo";
@@ -259,8 +202,34 @@ namespace HUD
 		{
 			RE::GFxValue clip;
 			if (a_movie.GetVariable(&clip, kInfoPath) && clip.IsDisplayObject()) {
+				SetVisible(clip, false);  // gone even if it can't be removed
 				clip.Invoke("removeMovieClip");
 			}
+		}
+
+		// the panel's clip, emptied (the one from before if it's still there)
+		RE::GFxValue InfoClip(RE::GFxMovieView& a_movie, RE::GFxValue& a_root)
+		{
+			RE::GFxValue clip;
+			if (a_movie.GetVariable(&clip, kInfoPath) && clip.IsDisplayObject()) {
+				for (const auto name : { "NameText", "StatsText", "EffectsText" }) {
+					RE::GFxValue field;
+					if (clip.GetMember(name, &field) && field.IsDisplayObject()) {
+						field.Invoke("removeTextField");
+					}
+				}
+				clip.Invoke("clear");  // the line
+				SetVisible(clip, true);
+				return clip;
+			}
+			std::array<RE::GFxValue, 2> clipArgs;
+			clipArgs[0].SetString(kInfoName);
+			clipArgs[1].SetNumber(RemovableDepth(a_root, 9001.0));
+			a_root.Invoke("createEmptyMovieClip", &clip, clipArgs);
+			if (!clip.IsDisplayObject()) {
+				a_movie.GetVariable(&clip, kInfoPath);
+			}
+			return clip;
 		}
 
 		std::string Escaped(std::string_view a_text)
@@ -353,6 +322,7 @@ namespace HUD
 
 	void SetHoldMode(bool a_on)
 	{
+		holdMode = a_on;  // before the task: a KeepHoldMode task still waiting won't push ours back after this
 		OnUIThread([a_on](RE::GFxMovieView& a_movie) {
 			std::array<RE::GFxValue, 2> args;
 			args[0].SetString(kHoldMode);
@@ -361,12 +331,15 @@ namespace HUD
 				logs::warn("The HUD has no ShowElements, its item info stays");
 			}
 		});
-		HideRollover(a_on);  // the crosshair item info, also with HUDs whose modes don't hide it
+		HideRollover(a_on);  // Better Third Person Selection's copy of the crosshair item info
 	}
 
 	void KeepHoldMode()
 	{
 		OnUIThread([](RE::GFxMovieView& a_movie) {
+			if (!holdMode.load()) {
+				return;  // the hold ended after this was asked
+			}
 			RE::GFxValue modes;
 			if (!a_movie.GetVariable(&modes, "_root.HUDMovieBaseInstance.HUDModes") || !modes.IsArray()) {
 				return;
@@ -400,9 +373,7 @@ namespace HUD
 			RE::GFxValue text;
 			a_movie.CreateString(&text, a_text.c_str());  // owned by the movie, unlike SetString
 			field.SetMember("text", text);
-			RE::GFxValue visible;
-			visible.SetBoolean(true);
-			field.SetMember("_visible", visible);
+			SetVisible(field, true);
 		});
 	}
 
@@ -411,6 +382,7 @@ namespace HUD
 		OnUIThread([](RE::GFxMovieView& a_movie) {
 			RE::GFxValue field;
 			if (a_movie.GetVariable(&field, kHintPath) && field.IsDisplayObject()) {
+				SetVisible(field, false);  // gone even if it can't be removed
 				field.Invoke("removeTextField");
 			}
 		});
@@ -418,18 +390,30 @@ namespace HUD
 
 	void HideRollover(bool a_hide)
 	{
-		OnUIThread([a_hide](RE::GFxMovieView& a_movie) {
-			RE::GFxValue hud;
-			if (!CrosshairHUD(a_movie, hud) || hideRollover == a_hide) {
-				return;
-			}
-			hideRollover = a_hide;
+		if (rolloverWanted.exchange(a_hide) == a_hide) {
+			return;
+		}
+		if (const auto btps = BTPS::Get()) {
 			if (a_hide) {
-				CallNoTarget(hud);
+				btps->HideSelectionWidget(BTPS::kSource);
 			} else {
-				ReplayLastCrosshair(a_movie, hud);  // what the game shows now (it only calls when the target changes)
+				btps->ShowSelectionWidget(BTPS::kSource);
 			}
-		});
+		}
+		if (!a_hide) {
+			refreshCrosshair = true;  // the game shows what's under the crosshair now (it only sends changes)
+		}
+	}
+
+	void Update()
+	{
+		if (refreshCrosshair.exchange(false)) {
+			// Skyrim's own crosshair publisher (what moreHUD calls after a HUD mode pop): fresh rollover data for the
+			// current target to the HUD, moreHUD and Better Third Person Selection (its text hook is inside it)
+			if (const auto player = RE::PlayerCharacter::GetSingleton()) {
+				player->UpdateCrosshairs();
+			}
+		}
 	}
 
 	void ShowItemInfo(std::shared_ptr<RE::InventoryEntryData> a_entry, const std::string& a_name, const ItemInfoLayout& a_layout)
@@ -443,11 +427,11 @@ namespace HUD
 		const std::string weightLabel = Lang::T("WEIGHT");
 		const std::string valueLabel = Lang::T("VALUE");
 		OnUIThread([a_entry, a_name, a_layout, damageLabel, armorLabel, weightLabel, valueLabel](RE::GFxMovieView& a_movie) {
-			RemoveInfo(a_movie);
 			// the inventory's own item card data for it
 			RE::ItemCard card(&a_movie);
 			card.SetItem(a_entry.get(), true);
 			if (!card.obj.IsObject()) {
+				RemoveInfo(a_movie);
 				return;
 			}
 			const auto type = Number(card.obj, "type").value_or(0.0);
@@ -489,16 +473,7 @@ namespace HUD
 			if (!a_movie.GetVariable(&root, "_root") || !root.IsObject()) {
 				return;
 			}
-			RE::GFxValue depth;
-			root.Invoke("getNextHighestDepth", &depth);
-			std::array<RE::GFxValue, 2> clipArgs;
-			clipArgs[0].SetString(kInfoName);
-			clipArgs[1].SetNumber(depth.IsNumber() ? depth.GetNumber() : 9001.0);
-			RE::GFxValue clip;
-			root.Invoke("createEmptyMovieClip", &clip, clipArgs);
-			if (!clip.IsDisplayObject()) {
-				a_movie.GetVariable(&clip, kInfoPath);
-			}
+			auto clip = InfoClip(a_movie, root);
 			if (!clip.IsDisplayObject()) {
 				logs::warn("Couldn't add the item info to the HUD");
 				return;
